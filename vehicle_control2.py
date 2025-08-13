@@ -45,7 +45,7 @@ controllerUpdateRate = 100
 # - v_ref: desired velocity in m/s
 # - K_p: proportional gain for speed controller
 # - K_i: integral gain for speed controller
-v_ref = 0.9
+v_ref = 0.5
 K_p = 0.1
 K_i = 1
 
