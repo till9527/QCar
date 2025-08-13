@@ -1,1 +1,1 @@
-This does not include the directory model and the file best.pt inside of it. You will need to train your own model for that
+This does not include the directory model and the file best.pt inside of it. You will need to train your own model for that. Make sure Quanser Interactive Labs is open and cityscape_lite is selected, and then run "run.bat" and it will do everything
