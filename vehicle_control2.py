@@ -20,7 +20,8 @@ from threading import Thread
 import time
 import cv2
 import pyqtgraph as pg
-
+from perception_module import run_perception
+import perception_module
 from pal.products.qcar import QCar, QCarGPS, IS_PHYSICAL_QCAR
 from pal.utilities.scope import MultiScope
 from pal.utilities.math import wrap_to_pi
@@ -88,6 +89,7 @@ KILL_THREAD = False
 def sig_handler(*args):
     global KILL_THREAD
     KILL_THREAD = True
+    perception_module.KILL_THREAD = True
 signal.signal(signal.SIGINT, sig_handler)
 #endregion
 
@@ -303,7 +305,7 @@ def controlLoop():
 
 #region : Setup and run experiment
 if __name__ == '__main__':
-
+   
     #region : Setup scopes
     if IS_PHYSICAL_QCAR:
         fps = 10
@@ -438,7 +440,8 @@ if __name__ == '__main__':
         arrow.setPos(initialPose[0], initialPose[1])
         steeringScope.axes[4].plot.addItem(arrow)
     #endregion
-
+    perception_thread = Thread(target=run_perception, args=(1,)) # Arg is 1 for the second car
+    perception_thread.start()
     #region : Setup control thread, then run experiment
     controlThread = Thread(target=controlLoop)
     controlThread.start()
