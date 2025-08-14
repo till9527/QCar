@@ -23,7 +23,7 @@ STOP_SIGNS_CONFIG = [
     {"id": 101, "location": [-2.067, 16.986, 0.215], "rotation": [0, 0, 90]},
     {"id": 102, "location": [7.989, 13.371, 0.215], "rotation": [0, 0, 360]},
     {"id": 103, "location": [4.733, 2.166, 0.215], "rotation": [0, 0, 270]},
-    {"id":104,"location":[16.412, -13.551, 0.2],"rotation":[0, 0, 180]}
+    {"id": 104, "location": [16.412, -13.551, 0.2], "rotation": [0, 0, 180]},
 ]
 YIELD_SIGNS_CONFIG = [
     {"id": 200, "location": [25.007, 32.494, 0.2], "rotation": [0, 0, -90]},
@@ -32,23 +32,18 @@ YIELD_SIGNS_CONFIG = [
 ]
 CROSSWALK_START = [-10.482, 40, 1]
 CROSSWALK_END = [-10.774, 47.083, 1]
-PEDESTRIAN_ROTATION = [0, 0, math.pi/2]
+PEDESTRIAN_ROTATION = [0, 0, math.pi / 2]
 LOCATION_START_P1 = [-6.8, 40.7, 0.005]
 
 
+ROTATION_P1P2 = [0, 0, math.pi / 2]
 
+SCALE = [1, 1, 1]
 
-
-ROTATION_P1P2 = [0,0,math.pi/2]
-
-SCALE = [1,1,1]
-
-ROTATION_P3 = [0,0,90]
-
+ROTATION_P3 = [0, 0, 90]
 
 
 LOCATION_END_P1 = [-7.6, 51, 0.005]
-
 
 
 CROSSWALK_LOCATION = [-10.788, 45, 0.00]
@@ -56,7 +51,6 @@ CROSSWALK_LOCATION = [-10.788, 45, 0.00]
 # The length of the path across the road
 
 CROSSWALK_PATH_LENGTH = 8
-
 
 
 # Calculate the start and end points for the pedestrian patrol path
@@ -68,26 +62,27 @@ CROSSWALK_START = [-10.482, 40, 1]
 CROSSWALK_END = [-10.774, 47.083, 1]
 
 
-
 # Pedestrian orientation to face along the path (90 degrees)
 
-PEDESTRIAN_ROTATION = [0, 0, math.pi/2]
+PEDESTRIAN_ROTATION = [0, 0, math.pi / 2]
 
 PEDESTRIAN_SCALE = [1, 1, 1]
 
 
-
 # --- Logic Functions for Threading ---
-def traffic_light_sequence(traffic_light, red_time=13, green_time=6, yellow_time=1, delay=0):
+def traffic_light_sequence(
+    traffic_light, red_time=15, green_time=30, yellow_time=1, delay=0
+):
     """Controls the R-Y-G sequence for a single traffic light in a continuous loop."""
     time.sleep(delay)
     while True:
-        traffic_light.set_color(QLabsTrafficLight.COLOR_RED)
-        time.sleep(red_time)
         traffic_light.set_color(QLabsTrafficLight.COLOR_GREEN)
         time.sleep(green_time)
         traffic_light.set_color(QLabsTrafficLight.COLOR_YELLOW)
         time.sleep(yellow_time)
+        traffic_light.set_color(QLabsTrafficLight.COLOR_RED)
+        time.sleep(red_time)
+
 
 def pedestrian_patrol(person, start_location, end_location, speed):
     """Controls a person to walk back and forth between two points."""
@@ -97,72 +92,94 @@ def pedestrian_patrol(person, start_location, end_location, speed):
         person.move_to(location=start_location, speed=speed, waitForConfirmation=True)
         time.sleep(10)
 
+
 # --- Main Script Execution ---
-print("Connecting to QLabs...")
-qlabs = QuanserInteractiveLabs()
-if not qlabs.open("localhost"):
-    print("FATAL: Unable to connect to QLabs. Is the simulation running?")
-    sys.exit()
-print("Connection successful.")
+if __name__ == "__main__":
+    print("Connecting to QLabs...")
+    qlabs = QuanserInteractiveLabs()
+    if not qlabs.open("localhost"):
+        print("FATAL: Unable to connect to QLabs. Is the simulation running?")
+        sys.exit()
+    print("Connection successful.")
 
-# == 1. SETUP PHASE: Spawn all actors in the simulation ==
-print("Spawning all actors...")
+    # == 1. SETUP PHASE: Spawn all actors in the simulation ==
+    print("Spawning all actors...")
 
-# Spawn Pedestrian
-person1 = QLabsPerson(qlabs)
-person1.spawn_id(actorNumber=0, location=CROSSWALK_START, rotation=PEDESTRIAN_ROTATION, scale=[1,1,1], configuration=6, waitForConfirmation=True)
-crosswalk = QLabsCrosswalk(qlabs)
-crosswalk.spawn_id(0, CROSSWALK_LOCATION, [0, 0, math.pi/2], [1, 1, 1], 0, 1)
-# Spawn Traffic Lights
-traffic_light_handles = []
-for config in TRAFFIC_LIGHTS_CONFIG:
-    light = QLabsTrafficLight(qlabs)
-    light.spawn_id_degrees(
-        actorNumber=config["id"],
-        location=config["location"],
-        rotation=config["rotation"],
+    # Spawn Pedestrian
+    person1 = QLabsPerson(qlabs)
+    person1.spawn_id(
+        actorNumber=0,
+        location=CROSSWALK_START,
+        rotation=PEDESTRIAN_ROTATION,
         scale=[1, 1, 1],
-        configuration=0,
+        configuration=6,
         waitForConfirmation=True,
     )
-    traffic_light_handles.append(light)
-print(f"Spawned {len(traffic_light_handles)} traffic lights.")
+    crosswalk = QLabsCrosswalk(qlabs)
+    crosswalk.spawn_id(0, CROSSWALK_LOCATION, [0, 0, math.pi / 2], [1, 1, 1], 0, 1)
+    # Spawn Traffic Lights
+    traffic_light_handles = []
+    for config in TRAFFIC_LIGHTS_CONFIG:
+        light = QLabsTrafficLight(qlabs)
+        light.spawn_id_degrees(
+            actorNumber=config["id"],
+            location=config["location"],
+            rotation=config["rotation"],
+            scale=[1, 1, 1],
+            configuration=0,
+            waitForConfirmation=True,
+        )
+        traffic_light_handles.append(light)
+    print(f"Spawned {len(traffic_light_handles)} traffic lights.")
 
-# Spawn Stop Signs
-for config in STOP_SIGNS_CONFIG:
-    sign = QLabsStopSign(qlabs)
-    sign.spawn_id_degrees(
-        actorNumber=config["id"], location=config["location"], rotation=config["rotation"],
-        scale=[1, 1, 1], configuration=0, waitForConfirmation=True
-    )
+    # Spawn Stop Signs
+    for config in STOP_SIGNS_CONFIG:
+        sign = QLabsStopSign(qlabs)
+        sign.spawn_id_degrees(
+            actorNumber=config["id"],
+            location=config["location"],
+            rotation=config["rotation"],
+            scale=[1, 1, 1],
+            configuration=0,
+            waitForConfirmation=True,
+        )
 
-# Spawn Yield Signs (Corrected indentation)
-for config in YIELD_SIGNS_CONFIG:
-    sign = QLabsYieldSign(qlabs)
-    sign.spawn_id_degrees(
-        actorNumber=config["id"], location=config["location"], rotation=config["rotation"],
-        scale=[1, 1, 1], configuration=0, waitForConfirmation=True
-    )
+    # Spawn Yield Signs (Corrected indentation)
+    for config in YIELD_SIGNS_CONFIG:
+        sign = QLabsYieldSign(qlabs)
+        sign.spawn_id_degrees(
+            actorNumber=config["id"],
+            location=config["location"],
+            rotation=config["rotation"],
+            scale=[1, 1, 1],
+            configuration=0,
+            waitForConfirmation=True,
+        )
 
-print("All actors have been spawned.")
+    print("All actors have been spawned.")
 
-# == 2. LOGIC PHASE: Start background threads for continuous actions ==
-print("Starting background logic for pedestrian and traffic lights...")
+    # == 2. LOGIC PHASE: Start background threads for continuous actions ==
+    print("Starting background logic for pedestrian and traffic lights...")
 
-# Start pedestrian logic
-Thread(target=pedestrian_patrol, args=(person1, CROSSWALK_START, CROSSWALK_END, person1.WALK)).start()
+    # Start pedestrian logic
+    Thread(
+        target=pedestrian_patrol,
+        args=(person1, CROSSWALK_START, CROSSWALK_END, person1.WALK),
+    ).start()
 
-# Start traffic light logic
-for i, light_handle in enumerate(traffic_light_handles):
-    Thread(target=traffic_light_sequence, args=(light_handle, 13, 6, 1, i * 5)).start()
+    # Start traffic light logic
+    for i, light_handle in enumerate(traffic_light_handles):
+        Thread(
+            target=traffic_light_sequence, args=(light_handle, 6, 13, 1, 0)
+        ).start()
 
-print("Environment logic is now running.")
+    print("Environment logic is now running.")
 
-# == 3. KEEP ALIVE PHASE: Prevent the main script from exiting ==
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    print("\nScript terminated by user. Closing QLabs connection.")
-    qlabs.close()
-    sys.exit()
+    # == 3. KEEP ALIVE PHASE: Prevent the main script from exiting ==
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nScript terminated by user. Closing QLabs connection.")
+        qlabs.close()
+        sys.exit()
