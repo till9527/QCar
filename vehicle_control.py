@@ -55,8 +55,7 @@ K_i = 1
 # - nodeSequence: list of nodes from roadmap. Used for trajectory generation.
 enableSteeringControl = True
 K_stanley = 1
-nodeSequence = [10, 4, 20, 10]
-#[4, 13, 9, 4]
+nodeSequence = [10,2,4,14,20,22,10]
 
 #endregion
 # -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -72,7 +71,6 @@ else:
 
 if not IS_PHYSICAL_QCAR:
     robotsDir = readRobots()
-
     # THIS VERSION OF VEHICLE CONTROL NEEDS THE CARS TO BE INITIALIZED USING THE MULTIAGENT CLASS
     Car1 = robotsDir["QC2_0"]
     calibrate=False
@@ -264,41 +262,43 @@ def controlLoop():
             qcar.write(u, delta)
             #endregion
 
+            # --- GRAPHICS CODE: This entire section is for updating the plots. ---
+            # --- It can be commented out to run the script without graphics.   ---
             #region : Update Scopes
-            count += 1
-            if count >= countMax and t > startDelay:
-                t_plot = t - startDelay
+            # count += 1
+            # if count >= countMax and t > startDelay:
+            #     t_plot = t - startDelay
 
-                # Speed control scope
-                speedScope.axes[0].sample(t_plot, [v, v_ref])
-                speedScope.axes[1].sample(t_plot, [v_ref-v])
-                speedScope.axes[2].sample(t_plot, [u])
+            #     # Speed control scope
+            #     speedScope.axes[0].sample(t_plot, [v, v_ref])
+            #     speedScope.axes[1].sample(t_plot, [v_ref-v])
+            #     speedScope.axes[2].sample(t_plot, [u])
 
-                # Steering control scope
-                if enableSteeringControl:
-                    steeringScope.axes[4].sample(t_plot, [[p[0],p[1]]])
+            #     # Steering control scope
+            #     if enableSteeringControl:
+            #         steeringScope.axes[4].sample(t_plot, [[p[0],p[1]]])
 
-                    p[0] = ekf.x_hat[0,0]
-                    p[1] = ekf.x_hat[1,0]
+            #         p[0] = ekf.x_hat[0,0]
+            #         p[1] = ekf.x_hat[1,0]
 
-                    x_ref = steeringController.p_ref[0]
-                    y_ref = steeringController.p_ref[1]
-                    th_ref = steeringController.th_ref
+            #         x_ref = steeringController.p_ref[0]
+            #         y_ref = steeringController.p_ref[1]
+            #         th_ref = steeringController.th_ref
 
-                    x_ref = gps.position[0]
-                    y_ref = gps.position[1]
-                    th_ref = gps.orientation[2]
+            #         x_ref = gps.position[0]
+            #         y_ref = gps.position[1]
+            #         th_ref = gps.orientation[2]
 
-                    steeringScope.axes[0].sample(t_plot, [p[0], x_ref])
-                    steeringScope.axes[1].sample(t_plot, [p[1], y_ref])
-                    steeringScope.axes[2].sample(t_plot, [th, th_ref])
-                    steeringScope.axes[3].sample(t_plot, [delta])
+            #         steeringScope.axes[0].sample(t_plot, [p[0], x_ref])
+            #         steeringScope.axes[1].sample(t_plot, [p[1], y_ref])
+            #         steeringScope.axes[2].sample(t_plot, [th, th_ref])
+            #         steeringScope.axes[3].sample(t_plot, [delta])
 
 
-                    arrow.setPos(p[0], p[1])
-                    arrow.setStyle(angle=180-th*180/np.pi)
+            #         arrow.setPos(p[0], p[1])
+            #         arrow.setStyle(angle=180-th*180/np.pi)
 
-                count = 0
+            #     count = 0
             #endregion
             continue
         qcar.read_write_std(throttle= 0, steering= 0)
@@ -307,159 +307,167 @@ def controlLoop():
 
 #region : Setup and run experiment
 if __name__ == '__main__':
-    
+   
+    # --- GRAPHICS CODE: This entire section is for setting up the plot windows. ---
+    # --- It can be commented out to run the script without graphics.          ---
     #region : Setup scopes
-    if IS_PHYSICAL_QCAR:
-        fps = 10
-    else:
-        fps = 30
-    # Scope for monitoring speed controller
-    speedScope = MultiScope(
-        rows=3,
-        cols=1,
-        title='Vehicle Speed Control',
-        fps=fps
-    )
-    speedScope.addAxis(
-        row=0,
-        col=0,
-        timeWindow=tf,
-        yLabel='Vehicle Speed [m/s]',
-        yLim=(0, 1)
-    )
-    speedScope.axes[0].attachSignal(name='v_meas', width=2)
-    speedScope.axes[0].attachSignal(name='v_ref')
+    # if IS_PHYSICAL_QCAR:
+    #     fps = 10
+    # else:
+    #     fps = 30
+    # # Scope for monitoring speed controller
+    # speedScope = MultiScope(
+    #     rows=3,
+    #     cols=1,
+    #     title='Vehicle Speed Control',
+    #     fps=fps
+    # )
+    # speedScope.addAxis(
+    #     row=0,
+    #     col=0,
+    #     timeWindow=tf,
+    #     yLabel='Vehicle Speed [m/s]',
+    #     yLim=(0, 1)
+    # )
+    # speedScope.axes[0].attachSignal(name='v_meas', width=2)
+    # speedScope.axes[0].attachSignal(name='v_ref')
 
-    speedScope.addAxis(
-        row=1,
-        col=0,
-        timeWindow=tf,
-        yLabel='Speed Error [m/s]',
-        yLim=(-0.5, 0.5)
-    )
-    speedScope.axes[1].attachSignal()
+    # speedScope.addAxis(
+    #     row=1,
+    #     col=0,
+    #     timeWindow=tf,
+    #     yLabel='Speed Error [m/s]',
+    #     yLim=(-0.5, 0.5)
+    # )
+    # speedScope.axes[1].attachSignal()
 
-    speedScope.addAxis(
-        row=2,
-        col=0,
-        timeWindow=tf,
-        xLabel='Time [s]',
-        yLabel='Throttle Command [%]',
-        yLim=(-0.3, 0.3)
-    )
-    speedScope.axes[2].attachSignal()
+    # speedScope.addAxis(
+    #     row=2,
+    #     col=0,
+    #     timeWindow=tf,
+    #     xLabel='Time [s]',
+    #     yLabel='Throttle Command [%]',
+    #     yLim=(-0.3, 0.3)
+    # )
+    # speedScope.axes[2].attachSignal()
 
-    # Scope for monitoring steering controller
-    if enableSteeringControl:
-        steeringScope = MultiScope(
-            rows=4,
-            cols=2,
-            title='Vehicle Steering Control',
-            fps=fps
-        )
+    # # Scope for monitoring steering controller
+    # if enableSteeringControl:
+    #     steeringScope = MultiScope(
+    #         rows=4,
+    #         cols=2,
+    #         title='Vehicle Steering Control',
+    #         fps=fps
+    #     )
 
-        steeringScope.addAxis(
-            row=0,
-            col=0,
-            timeWindow=tf,
-            yLabel='x Position [m]',
-            yLim=(-2.5, 2.5)
-        )
-        steeringScope.axes[0].attachSignal(name='x_meas')
-        steeringScope.axes[0].attachSignal(name='x_ref')
+    #     steeringScope.addAxis(
+    #         row=0,
+    #         col=0,
+    #         timeWindow=tf,
+    #         yLabel='x Position [m]',
+    #         yLim=(-2.5, 2.5)
+    #     )
+    #     steeringScope.axes[0].attachSignal(name='x_meas')
+    #     steeringScope.axes[0].attachSignal(name='x_ref')
 
-        steeringScope.addAxis(
-            row=1,
-            col=0,
-            timeWindow=tf,
-            yLabel='y Position [m]',
-            yLim=(-1, 5)
-        )
-        steeringScope.axes[1].attachSignal(name='y_meas')
-        steeringScope.axes[1].attachSignal(name='y_ref')
+    #     steeringScope.addAxis(
+    #         row=1,
+    #         col=0,
+    #         timeWindow=tf,
+    #         yLabel='y Position [m]',
+    #         yLim=(-1, 5)
+    #     )
+    #     steeringScope.axes[1].attachSignal(name='y_meas')
+    #     steeringScope.axes[1].attachSignal(name='y_ref')
 
-        steeringScope.addAxis(
-            row=2,
-            col=0,
-            timeWindow=tf,
-            yLabel='Heading Angle [rad]',
-            yLim=(-3.5, 3.5)
-        )
-        steeringScope.axes[2].attachSignal(name='th_meas')
-        steeringScope.axes[2].attachSignal(name='th_ref')
+    #     steeringScope.addAxis(
+    #         row=2,
+    #         col=0,
+    #         timeWindow=tf,
+    #         yLabel='Heading Angle [rad]',
+    #         yLim=(-3.5, 3.5)
+    #     )
+    #     steeringScope.axes[2].attachSignal(name='th_meas')
+    #     steeringScope.axes[2].attachSignal(name='th_ref')
 
-        steeringScope.addAxis(
-            row=3,
-            col=0,
-            timeWindow=tf,
-            yLabel='Steering Angle [rad]',
-            yLim=(-0.6, 0.6)
-        )
-        steeringScope.axes[3].attachSignal()
-        steeringScope.axes[3].xLabel = 'Time [s]'
+    #     steeringScope.addAxis(
+    #         row=3,
+    #         col=0,
+    #         timeWindow=tf,
+    #         yLabel='Steering Angle [rad]',
+    #         yLim=(-0.6, 0.6)
+    #     )
+    #     steeringScope.axes[3].attachSignal()
+    #     steeringScope.axes[3].xLabel = 'Time [s]'
 
-        steeringScope.addXYAxis(
-            row=0,
-            col=1,
-            rowSpan=4,
-            xLabel='x Position [m]',
-            yLabel='y Position [m]',
-            xLim=(-2.5, 2.5),
-            yLim=(-1, 5)
-        )
+    #     steeringScope.addXYAxis(
+    #         row=0,
+    #         col=1,
+    #         rowSpan=4,
+    #         xLabel='x Position [m]',
+    #         yLabel='y Position [m]',
+    #         xLim=(-2.5, 2.5),
+    #         yLim=(-1, 5)
+    #     )
 
-        im = cv2.imread(
-            images.SDCS_CITYSCAPE,
-            cv2.IMREAD_GRAYSCALE
-        )
+    #     # im = cv2.imread(
+    #     #     images.SDCS_CITYSCAPE,
+    #     #     cv2.IMREAD_GRAYSCALE
+    #     # )
 
-        steeringScope.axes[4].attachImage(
-            scale=(-0.002035, 0.002035),
-            offset=(1125,2365),
-            rotation=180,
-            levels=(0, 255)
-        )
-        steeringScope.axes[4].images[0].setImage(image=im)
+    #     steeringScope.axes[4].attachImage(
+    #         scale=(-0.002035, 0.002035),
+    #         offset=(1125,2365),
+    #         rotation=180,
+    #         levels=(0, 255)
+    #     )
+    #     #steeringScope.axes[4].images[0].setImage(image=im)
 
-        referencePath = pg.PlotDataItem(
-            pen={'color': (85,168,104), 'width': 2},
-            name='Reference'
-        )
-        steeringScope.axes[4].plot.addItem(referencePath)
-        referencePath.setData(waypointSequence[0, :],waypointSequence[1, :])
+    #     referencePath = pg.PlotDataItem(
+    #         pen={'color': (85,168,104), 'width': 2},
+    #         name='Reference'
+    #     )
+    #     steeringScope.axes[4].plot.addItem(referencePath)
+    #     referencePath.setData(waypointSequence[0, :],waypointSequence[1, :])
 
-        steeringScope.axes[4].attachSignal(name='Estimated', width=2)
+    #     steeringScope.axes[4].attachSignal(name='Estimated', width=2)
 
-        arrow = pg.ArrowItem(
-            angle=180,
-            tipAngle=60,
-            headLen=10,
-            tailLen=10,
-            tailWidth=5,
-            pen={'color': 'w', 'fillColor': [196,78,82], 'width': 1},
-            brush=[196,78,82]
-        )
-        arrow.setPos(initialPose[0], initialPose[1])
-        steeringScope.axes[4].plot.addItem(arrow)
+    #     arrow = pg.ArrowItem(
+    #         angle=180,
+    #         tipAngle=60,
+    #         headLen=10,
+    #         tailLen=10,
+    #         tailWidth=5,
+    #         pen={'color': 'w', 'fillColor': [196,78,82], 'width': 1},
+    #         brush=[196,78,82]
+    #     )
+    #     arrow.setPos(initialPose[0], initialPose[1])
+    #     steeringScope.axes[4].plot.addItem(arrow)
     #endregion
-    perception_thread = Thread(target=run_perception, args=(0,)) # Arg is 0 for the first car
+    
+    perception_thread = Thread(target=run_perception, args=(0,)) # Arg is 1 for the second car
     perception_thread.start()
+    
     #region : Setup control thread, then run experiment
     controlThread = Thread(target=controlLoop)
     controlThread.start()
 
     try:
+        # This loop keeps the main script alive.
+        # We comment out the MultiScope refresh call.
         while controlThread.is_alive() and (not KILL_THREAD):
-            MultiScope.refreshAll()
-            time.sleep(0.01)
+            # MultiScope.refreshAll()
+            time.sleep(0.01) # Keep the sleep call to prevent high CPU usage
     finally:
         KILL_THREAD = True
     #endregion
+    
     if not IS_PHYSICAL_QCAR:
         cmd = QLabsRealTime().terminate_all_real_time_models()
         time.sleep(1)
         cmd = QLabsRealTime().terminate_all_real_time_models()
-        #qlabs_setup.terminate()
+        time.sleep(1)
+        cmd = QLabsRealTime().terminate_all_real_time_models()
         pass
 
     input('Experiment complete. Press any key to exit...')

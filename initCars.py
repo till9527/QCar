@@ -27,13 +27,13 @@ try:
     # 3. Define the cars to be spawned
     QCars_to_spawn = [
         {
-            "RobotType": "QCar2",
+            "RobotType": "QC2",
             "Location": [-12.82, -4.60, 0],
             "Rotation": [0, 0, -0.733],
             'Radians': True
         },
         {
-            "RobotType": "QC2",
+            "RobotType": "QCar2",
             "Location": [22.55, 0.81, 0],
             "Rotation": [0, 0, 1.57],
             'Radians': True

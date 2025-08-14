@@ -23,6 +23,7 @@ STOP_SIGNS_CONFIG = [
     {"id": 101, "location": [-2.067, 16.986, 0.215], "rotation": [0, 0, 90]},
     {"id": 102, "location": [7.989, 13.371, 0.215], "rotation": [0, 0, 360]},
     {"id": 103, "location": [4.733, 2.166, 0.215], "rotation": [0, 0, 270]},
+    {"id":104,"location":[16.412, -13.551, 0.2],"rotation":[0, 0, 180]}
 ]
 YIELD_SIGNS_CONFIG = [
     {"id": 200, "location": [25.007, 32.494, 0.2], "rotation": [0, 0, -90]},

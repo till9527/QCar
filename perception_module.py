@@ -22,7 +22,8 @@ def run_perception(actor_id):
     # Configuration
     MODEL_PATH = "model/best.pt"
     # The CAMERA_RGB constant is the same (4) in both QCar and QCar2 classes
-    CAMERA_TO_USE = QLabsQCar2.CAMERA_RGB 
+    CAMERA_TO_USE = QLabsQCar2.CAMERA_RGB
+    #print(CAMERA_TO_USE)
 
     qlabs = None
     try:
@@ -55,6 +56,7 @@ def run_perception(actor_id):
         image_ok = False
         while time.time() - start_time < 10:
             image_ok, _ = car.get_image(CAMERA_TO_USE)
+            print(image_ok)
             if image_ok:
                 print(f"[Perception-{actor_id}] ✅ Camera stream is live!")
                 break
@@ -68,7 +70,7 @@ def run_perception(actor_id):
         while not KILL_THREAD:
             ok, image = car.get_image(CAMERA_TO_USE)
             if ok:
-                results = model(image, verbose=False)[0]
+                results = model(image, verbose=False,conf=0.8)[0]
                 annotated_image = results.plot()
 
                 window_name = f"YOLO Detection - Car {actor_id}"
