@@ -164,14 +164,12 @@ if __name__ == "__main__":
     # Start pedestrian logic
     Thread(
         target=pedestrian_patrol,
-        args=(person1, CROSSWALK_START, CROSSWALK_END, person1.WALK),
+        args=(person1, CROSSWALK_START, CROSSWALK_END, 1.2),
     ).start()
 
     # Start traffic light logic
     for i, light_handle in enumerate(traffic_light_handles):
-        Thread(
-            target=traffic_light_sequence, args=(light_handle, 6, 13, 1, 0)
-        ).start()
+        Thread(target=traffic_light_sequence, args=(light_handle, 6, 13, 1, 0)).start()
 
     print("Environment logic is now running.")
 

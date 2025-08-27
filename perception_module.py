@@ -9,6 +9,7 @@ from qvl.qcar2 import QLabsQCar2
 
 KILL_THREAD = False
 
+
 def run_perception(perception_queue, actor_id):
     """
     This function handles the perception pipeline and sends results to a queue.
@@ -38,15 +39,25 @@ def run_perception(perception_queue, actor_id):
             if ok:
                 # Run inference
                 results = model(image, verbose=False,conf=0.8)[0]
-                
+
                 # --- NEW: Process and send detection data ---
                 detections = []
                 for box in results.boxes:
                     class_id = int(box.cls)
                     class_name = model.names[class_id]
-                    width = box.xywh[0][2].item() # Extract width from the bounding box
-                    detections.append({"class": class_name, "width": width})
-                
+                    x_center, y_center, width, height = box.xywh[0]
+                    x_top_left = x_center.item() - (width.item() / 2)
+                    y_top_left = y_center.item() - (height.item() / 2)
+
+                    detection_data = {
+                        "class": class_name,
+                        "width": width.item(),
+                        "height": height.item(),
+                        "x": x_top_left,
+                        "y": y_top_left,
+                    }
+                    detections.append(detection_data)
+
                 # Put the list of detections into the queue for the controller
                 if not perception_queue.full():
                     perception_queue.put(detections)
@@ -55,7 +66,7 @@ def run_perception(perception_queue, actor_id):
                 # Optional: still show the annotated image
                 annotated_image = results.plot()
                 window_name = f"YOLO Detection - Car {actor_id}"
-                cv2.imshow(window_name, cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
+                cv2.imshow(window_name, annotated_image)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
             else:
