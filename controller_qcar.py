@@ -1,0 +1,221 @@
+# === controller.py ===
+import multiprocessing
+import time
+import math
+
+# Threshold
+RED_LIGHT_MIN_WIDTH = 38
+MOVEMENT_THRESHOLD_PX_PER_SEC = 25
+
+# If we haven't seen an object for this long (in seconds), forget about it.
+STALE_OBJECT_TIMEOUT = 1.5
+
+
+# We no longer use these width thresholds for pedestrians/Qcars, but they could be useful for other logic.
+# PEDESTRIAN_MIN_WIDTH = 80
+# QCAR_MIN_WIDTH = 100
+QCAR_DANGER_WIDTH = 140
+
+# TUNE this: Defines the "in front of me" zone.
+# Assumes a 640px wide camera image. The center is 320.
+CAMERA_CENTER_X = 320
+CENTER_TOLERANCE = 150  # How far from the center an object can be (in pixels)
+
+# TUNE this: How close a pedestrian must be before we stop.
+PEDESTRIAN_MIN_WIDTH_FOR_STOP = 110
+QCAR_MIN_WIDTH_FOR_STOP = 120
+SAFE_FOLLOWING_DISTANCE_WIDTH = 80
+
+# TUNE: This is the "emergency brake" distance. If the car gets any closer than
+# this, we slam on the brakes. This MUST be larger than the safe following distance.
+MIN_DISTANCE_FOR_HARD_BRAKE_WIDTH = 150
+
+# TUNE: This creates a "dead zone" around the safe following distance to prevent
+# the car from rapidly accelerating and braking. A larger value is smoother.
+DISTANCE_TOLERANCE_WIDTH = 10
+# --- Helper functions ---
+
+LEAD_CAR_CRAWL_SPEED_THRESHOLD = 5.0
+ACC_CYCLE_DURATION = 0.5  # We will make a decision every half second.
+
+# TUNE: This is the MOST IMPORTANT new value. It's the speed (in px/s) of a
+# lead car when it is moving at our car's maximum v_ref. We use this to
+# scale the lead car's speed to a 0-1 ratio for our throttle.
+MAX_SPEED_PXS = 150.0
+
+
+# Helper functions
+def get_position(results):
+    if results and "x" in results[0] and "y" in results[0] and "width" in results[0]:
+        # Calculate the center of the bounding box for more stable tracking
+        x = results[0]["x"]
+        width = results[0]["width"]
+        # Assuming height is also available or can be inferred
+        height = results[0].get("height", width)  # Guess height if not present
+        center_x = x + width / 2
+        center_y = results[0]["y"] + height / 2
+        return (center_x, center_y)
+    return None
+
+
+def any_detected_objects(results):
+    return isinstance(results, list) and len(results) > 0
+
+
+def get_cls(results):
+    return results[0]["class"] if results and "class" in results[0] else None
+
+
+def get_width(results):
+    return results[0]["width"] if results and "width" in results[0] else 0
+
+
+def get_x(results):
+    return results[0]["x"] if results and "x" in results[0] else 0
+
+
+def get_y(results):
+    return results[0]["y"] if results and "y" in results[0] else 0
+
+
+def get_height(results):
+    return results[0]["height"] if results and "width" in results[0] else 0
+
+
+def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing.Queue):
+    is_stopped_light = False
+    is_stopped_pedestrian = False
+    tracked_objects = {}
+    is_moving_ped = False
+
+    ### MODIFICATION 1: Add a variable to track the last time a pedestrian was seen.
+    # We initialize it to 0 so that time.time() - last_pedestrian_seen_time is always large at the start.
+    last_pedestrian_seen_time = 0
+    # This constant defines the timeout you requested.
+    PEDESTRIAN_CLEAR_TIMEOUT_S = 1.0
+
+    try:
+        while True:
+            # We process the queue if there's data, otherwise we can still check for timeouts.
+            if not perception_queue.empty():
+                results = perception_queue.get()
+                current_time = time.time()
+                stale_keys = []
+                for key, data in tracked_objects.items():
+                    if current_time - data["time"] > STALE_OBJECT_TIMEOUT:
+                        stale_keys.append(key)
+                for key in stale_keys:
+                    del tracked_objects[key]
+                if any_detected_objects(results):
+                    cls = get_cls(results)
+                    width = get_width(results)
+                    position = get_position(results)
+                    is_moving_ped = False
+
+                    ### MODIFICATION 2: If we see a pedestrian, update the timestamp.
+                    if cls == "pedestrian":
+                        last_pedestrian_seen_time = current_time
+
+                    if position and cls in tracked_objects:
+                        # ==================== LEVEL 2 DEBUGGING ====================
+                        # 3. This print tells us we've successfully met the first two conditions.
+
+                        # ==========================================================
+
+                        last_pos = tracked_objects[cls]["position"]
+                        last_time = tracked_objects[cls]["time"]
+                        delta_time = current_time - last_time
+
+                        if delta_time > 0:
+                            distance = math.hypot(
+                                position[0] - last_pos[0], position[1] - last_pos[1]
+                            )
+                            speed_px_per_sec = distance / delta_time
+
+                            # The original debug line
+                            if cls == "pedestrian":
+                                print(
+                                    f"      [SPEED CALC] Pedestrian Speed: {speed_px_per_sec:.2f} px/s  |   Threshold is: {MOVEMENT_THRESHOLD_PX_PER_SEC} width is: {width}"
+                                )
+                                if speed_px_per_sec > MOVEMENT_THRESHOLD_PX_PER_SEC:
+                                    is_moving_ped = True
+                    
+                        # ==========================================================
+
+                    if position:
+                        tracked_objects[cls] = {
+                            "position": position,
+                            "time": current_time,
+                        }
+                    # MODIFIED: Stop condition now only depends on perception.
+                    if (
+                        cls == "Red"
+                        and width > RED_LIGHT_MIN_WIDTH
+                        and not is_stopped_light
+                    ):
+                        command_queue.put("STOP")
+                        print(
+                            "[Controller] STOPPING: Red light detected by perception."
+                        )
+                        is_stopped_light = True
+
+                    # MODIFIED: Go condition now only depends on perception.
+                    elif (
+                        cls == "Green"
+                        and is_stopped_light
+                        and not is_stopped_pedestrian
+                    ):
+                        command_queue.put("GO")
+                        print(
+                            "[Controller] RESUMING: Green light detected by perception."
+                        )
+                        is_stopped_light = False
+
+                    elif (
+                        cls == "pedestrian"
+                        and not is_stopped_light
+                        and not is_moving_ped
+                        and is_stopped_pedestrian
+                    ):
+                        command_queue.put("GO")
+                        print(
+                            ### MODIFICATION 4: Corrected print statement
+                            "[Controller] RESUMING: Pedestrian is present but stationary."
+                        )
+                        is_stopped_pedestrian = False
+
+                    elif (
+                        cls == "pedestrian"
+                        and not is_stopped_light
+                        and is_moving_ped
+                        and not is_stopped_pedestrian
+                        and width > PEDESTRIAN_MIN_WIDTH_FOR_STOP
+                    ):
+                        command_queue.put("STOP")
+                        print(
+                            ### MODIFICATION 4: Corrected print statement
+                            "[Controller] STOPPING: Moving pedestrian detected in path."
+                        )
+                        is_stopped_pedestrian = True
+
+            ### MODIFICATION 3: Add new logic to resume if a pedestrian has disappeared.
+            # This check runs outside of the object detection block. It uses the state
+            # (`is_stopped_pedestrian`) and the timestamp (`last_pedestrian_seen_time`)
+            # to make a decision.
+            if (
+                is_stopped_pedestrian
+                and not is_stopped_light
+                and (
+                    time.time() - last_pedestrian_seen_time > PEDESTRIAN_CLEAR_TIMEOUT_S
+                )
+            ):
+                command_queue.put("GO")
+                print(
+                    f"[Controller] RESUMING: Pedestrian not detected for > {PEDESTRIAN_CLEAR_TIMEOUT_S} second(s)."
+                )
+                is_stopped_pedestrian = False
+
+            time.sleep(0.05)
+
+    except KeyboardInterrupt:
+        print("[Controller] Shutdown requested.")
