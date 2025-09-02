@@ -2,7 +2,7 @@
 import multiprocessing
 import time
 import math
-
+import numpy as np
 # Threshold
 RED_LIGHT_MIN_WIDTH = 38
 MOVEMENT_THRESHOLD_PX_PER_SEC = 25
@@ -10,8 +10,9 @@ MOVEMENT_THRESHOLD_PX_PER_SEC = 25
 STOP_SIGN_MIN_WIDTH = 70  # TUNE: Minimum width in pixels to consider a stop sign valid.
 STOP_SIGN_WAIT_TIME_S = 5.0  # Defines the mandatory stop duration in seconds.
 # --- END: NEW CONSTANTS FOR STOP SIGN ---
-
-
+DANGER_ZONE_LENGTH = 3.0  # meters
+DANGER_ZONE_WIDTH = 2.0   # meters
+PIXELS_PER_METER = 60
 # If we haven't seen an object for this long (in seconds), forget about it.
 STALE_OBJECT_TIMEOUT = 1.5
 
@@ -48,7 +49,44 @@ ACC_CYCLE_DURATION = 0.5  # We will make a decision every half second.
 # scale the lead car's speed to a 0-1 ratio for our throttle.
 MAX_SPEED_PXS = 150.0
 
+def is_object_in_danger_zone(detection, car_heading_rad):
+    """
+    Estimates an object's position relative to the car and checks if it's
+    in a predefined rectangular "danger zone" in front of the car.
+    """
+    if not detection:
+        return False
 
+    # 1. Get pixel coordinates from detection
+    box_width_px = detection.get("width", 0)
+    # Get the center of the bottom edge of the bounding box for better distance estimation
+    box_center_x_px = detection.get("x", 0) + (box_width_px / 2)
+
+    # 2. Simple distance and lateral deviation estimation
+    # Assume the object is on the ground. The further away it is, the smaller it appears.
+    # This is a very rough estimate and works best for objects directly ahead.
+    if box_width_px < 10: # Ignore very small (likely far away or false) detections
+        return False
+    
+    estimated_dist_m = (PIXELS_PER_METER * 1.0) / box_width_px # Inverse relationship
+
+    # Estimate how far off-center the object is in meters
+    # The camera center is 320px
+    pixel_offset_from_center = box_center_x_px - CAMERA_CENTER_X
+    estimated_lateral_dev_m = pixel_offset_from_center / PIXELS_PER_METER
+
+    # 3. Check if the object is within our rectangular danger zone
+    # We are checking a point (estimated_lateral_dev_m, estimated_dist_m)
+    # against a box defined by (DANGER_ZONE_WIDTH, DANGER_ZONE_LENGTH)
+    
+    is_in_front = 0 < estimated_dist_m < DANGER_ZONE_LENGTH
+    is_aligned = abs(estimated_lateral_dev_m) < (DANGER_ZONE_WIDTH / 2)
+
+    if is_in_front and is_aligned:
+        # print(f"  [CollisionCheck] DANGER! Object at ~({estimated_lateral_dev_m:.2f}m, {estimated_dist_m:.2f}m)")
+        return True
+        
+    return False
 # Helper functions
 def get_position(results):
     if results and "x" in results[0] and "y" in results[0] and "width" in results[0]:
@@ -97,6 +135,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
     is_stopped_for_sign = False
     stop_sign_start_time = 0
     yield_sign_start_time = 0
+    red_start_time = 0
     # --- END: NEW STATE VARIABLES FOR STOP SIGN ---
 
     ### MODIFICATION 1: Add a variable to track the last time a pedestrian was seen.
@@ -104,6 +143,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
     last_pedestrian_seen_time = 0
     last_stop_seen_time = 0
     last_yield_seen_time = 0
+    last_red_seen_time = 0
     # This constant defines the timeout you requested.
     PEDESTRIAN_CLEAR_TIMEOUT_S = 1.0
 
@@ -119,6 +159,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         stale_keys.append(key)
                 for key in stale_keys:
                     del tracked_objects[key]
+                
                 if any_detected_objects(results):
                     cls = get_cls(results)
                     width = get_width(results)
@@ -126,12 +167,15 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                     is_moving_ped = False
 
                     ### MODIFICATION 2: If we see a pedestrian, update the timestamp.
+
                     if cls == "pedestrian":
                         last_pedestrian_seen_time = current_time
                     if cls == "stop":
                         last_stop_seen_time = current_time
                     if cls == "yield":
                         last_yield_seen_time = current_time
+                    if cls == "Red":
+                        last_red_seen_time = current_time
                     if position and cls in tracked_objects:
                         # ==================== LEVEL 2 DEBUGGING ====================
                         # 3. This print tells us we've successfully met the first two conditions.
@@ -177,20 +221,8 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                             "[Controller] STOPPING: Red light detected by perception."
                         )
                         is_stopped_light = True
-                    # elif (
-                    #     cls == "Yellow"
-                    #     and width > RED_LIGHT_MIN_WIDTH
-                    #     and not is_stopped_light
-                    #     and not is_stopped_for_sign
-                    #     and not is_stopped_yield
-                    #     and not is_stopped_pedestrian
-                    # ):
-                    #     command_queue.put("STOP")
-                    #     print(
-                    #         "[Controller] STOPPING: Red light detected by perception."
-                    #     )
-                    #     is_stopped_light = True
-                    # MODIFIED: Go condition now only depends on perception.
+                        red_stop_time = time.time()
+                   
                     elif (
                         cls == "Green"
                         and is_stopped_light
@@ -230,7 +262,6 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         and time.time() - yield_sign_start_time > 6
                     ):
                         command_queue.put("STOP")
-                        print("Yield stopped width: ",width)
                         is_stopped_yield = True
                         yield_sign_start_time = time.time()
                     elif (
@@ -309,7 +340,16 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                 command_queue.put("GO")
                 print(f"[Controller] RESUMING: Stopped at Yield for 3 seconds.")
                 is_stopped_yield = False
-
+            if (
+                is_stopped_light
+                and (time.time() - red_stop_time > 6)
+                and not is_stopped_for_sign
+                and not is_stopped_yield
+                and not is_stopped_pedestrian
+            ):
+                command_queue.put("GO")
+                print(f"[Controller] RESUMING: Stopped at Red for over 5 seconds.")
+                is_stopped_light = False
             time.sleep(0.05)
 
     except KeyboardInterrupt:

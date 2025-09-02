@@ -12,6 +12,8 @@ from qvl.traffic_light import QLabsTrafficLight
 from qvl.person import QLabsPerson
 from qvl.stop_sign import QLabsStopSign
 from qvl.yield_sign import QLabsYieldSign
+from qvl.environment_outdoors import QLabsEnvironmentOutdoors
+from qvl.system import QLabsSystem
 
 # --- Configuration Constants ---
 TRAFFIC_LIGHTS_CONFIG = [
@@ -23,15 +25,15 @@ STOP_SIGNS_CONFIG = [
     {"id": 101, "location": [-2.067, 16.986, 0.215], "rotation": [0, 0, 90]},
     {"id": 102, "location": [7.989, 13.371, 0.215], "rotation": [0, 0, 360]},
     {"id": 103, "location": [4.733, 2.166, 0.215], "rotation": [0, 0, 270]},
-    #{"id": 104, "location": [16.412, -13.551, 0.2], "rotation": [0, 0, 180]},
+    # {"id": 104, "location": [16.412, -13.551, 0.2], "rotation": [0, 0, 180]},
 ]
 YIELD_SIGNS_CONFIG = [
     {"id": 200, "location": [25.007, 32.494, 0.2], "rotation": [0, 0, -90]},
     {"id": 201, "location": [5.25, 39.477, 0.215], "rotation": [0, 0, 180]},
     {"id": 202, "location": [11.136, 28.326, 0.215], "rotation": [0, 0, 225]},
 ]
-CROSSWALK_START = [-10.482, 40, 1]
-CROSSWALK_END = [-10.774, 47.083, 1]
+CROSSWALK_START = [17.584, 18.098, 0.215]
+CROSSWALK_END = [24.428, 18.112, 0.2]
 PEDESTRIAN_ROTATION = [0, 0, math.pi / 2]
 LOCATION_START_P1 = [-6.8, 40.7, 0.005]
 
@@ -46,7 +48,7 @@ ROTATION_P3 = [0, 0, 90]
 LOCATION_END_P1 = [-7.6, 51, 0.005]
 
 
-CROSSWALK_LOCATION = [-10.788, 45, 0.00]
+CROSSWALK_LOCATION = [21.175, 18.15, 0.0]
 
 # The length of the path across the road
 
@@ -57,9 +59,9 @@ CROSSWALK_PATH_LENGTH = 8
 
 # The crosswalk is rotated 90 degrees, so the path is along the Y-axis
 
-CROSSWALK_START = [-10.482, 40, 1]
+CROSSWALK_START = [17.584, 18.098, 0.215]
 
-CROSSWALK_END = [-10.774, 47.083, 1]
+CROSSWALK_END = [24.771, 18.023, 0.19]
 
 
 # Pedestrian orientation to face along the path (90 degrees)
@@ -101,7 +103,9 @@ if __name__ == "__main__":
         print("FATAL: Unable to connect to QLabs. Is the simulation running?")
         sys.exit()
     print("Connection successful.")
-
+    hSystem = QLabsSystem(qlabs)
+    hEnvironmentOutdoors2 = QLabsEnvironmentOutdoors(qlabs)
+    hEnvironmentOutdoors2.set_weather_preset(hEnvironmentOutdoors2.SNOW)
     # == 1. SETUP PHASE: Spawn all actors in the simulation ==
     print("Spawning all actors...")
 
@@ -116,7 +120,7 @@ if __name__ == "__main__":
         waitForConfirmation=True,
     )
     crosswalk = QLabsCrosswalk(qlabs)
-    crosswalk.spawn_id(0, CROSSWALK_LOCATION, [0, 0, math.pi / 2], [1, 1, 1], 0, 1)
+    crosswalk.spawn_id(0, CROSSWALK_LOCATION, [0, 0, math.pi], [1, 1, 1], 0, 1)
     # Spawn Traffic Lights
     traffic_light_handles = []
     for config in TRAFFIC_LIGHTS_CONFIG:

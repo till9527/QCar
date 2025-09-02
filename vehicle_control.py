@@ -210,6 +210,8 @@ def controlLoop(command_queue, shared_pose):
                     )
                 shared_pose["x"] = ekf.x_hat[0, 0]
                 shared_pose["y"] = ekf.x_hat[1, 0]
+                shared_pose['th'] = ekf.x_hat[2, 0] # Share heading (theta)
+                shared_pose['v'] = qcar.motorTach  # Share current velocity
                 x = ekf.x_hat[0, 0]
                 y = ekf.x_hat[1, 0]
                 th = ekf.x_hat[2, 0]
@@ -257,7 +259,7 @@ if __name__ == "__main__":
 
     # Shared dictionary for car's pose
     manager = mp.Manager()
-    shared_pose = manager.dict({"x": 0.0, "y": 0.0})
+    shared_pose = manager.dict({"x": 0.0, "y": 0.0, "th": 0.0, "v": 0.0})
 
     # --- Start All Processes and Threads ---
 
