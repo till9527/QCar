@@ -30,13 +30,13 @@ from qvl.real_time import QLabsRealTime
 tf = 6000
 startDelay = 1
 controllerUpdateRate = 100
-v_ref = 0.25
+v_ref = 0.5
 K_p = 0.1
 K_i = 1
 enableSteeringControl = True
 K_stanley = 1
 # MODIFICATION: Use a different path for the second car.
-nodeSequence = [4, 14, 20, 22, 10, 2, 4]
+nodeSequence = [4, 14, 20, 22, 9, 0, 2, 4]
 # endregion
 
 # region : Initial Setup (remains mostly the same)

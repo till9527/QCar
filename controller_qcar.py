@@ -6,6 +6,11 @@ import math
 # Threshold
 RED_LIGHT_MIN_WIDTH = 38
 MOVEMENT_THRESHOLD_PX_PER_SEC = 25
+# --- START: NEW CONSTANTS FOR STOP SIGN ---
+STOP_SIGN_MIN_WIDTH = 70  # TUNE: Minimum width in pixels to consider a stop sign valid.
+STOP_SIGN_WAIT_TIME_S = 5.0  # Defines the mandatory stop duration in seconds.
+# --- END: NEW CONSTANTS FOR STOP SIGN ---
+
 
 # If we haven't seen an object for this long (in seconds), forget about it.
 STALE_OBJECT_TIMEOUT = 1.5
@@ -87,10 +92,18 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
     is_stopped_pedestrian = False
     tracked_objects = {}
     is_moving_ped = False
+    is_stopped_yield = False
+    # --- START: NEW STATE VARIABLES FOR STOP SIGN ---
+    is_stopped_for_sign = False
+    stop_sign_start_time = 0
+    yield_sign_start_time = 0
+    # --- END: NEW STATE VARIABLES FOR STOP SIGN ---
 
     ### MODIFICATION 1: Add a variable to track the last time a pedestrian was seen.
     # We initialize it to 0 so that time.time() - last_pedestrian_seen_time is always large at the start.
     last_pedestrian_seen_time = 0
+    last_stop_seen_time = 0
+    last_yield_seen_time = 0
     # This constant defines the timeout you requested.
     PEDESTRIAN_CLEAR_TIMEOUT_S = 1.0
 
@@ -115,7 +128,10 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                     ### MODIFICATION 2: If we see a pedestrian, update the timestamp.
                     if cls == "pedestrian":
                         last_pedestrian_seen_time = current_time
-
+                    if cls == "stop":
+                        last_stop_seen_time = current_time
+                    if cls == "yield":
+                        last_yield_seen_time = current_time
                     if position and cls in tracked_objects:
                         # ==================== LEVEL 2 DEBUGGING ====================
                         # 3. This print tells us we've successfully met the first two conditions.
@@ -134,12 +150,12 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
 
                             # The original debug line
                             if cls == "pedestrian":
-                                print(
-                                    f"      [SPEED CALC] Pedestrian Speed: {speed_px_per_sec:.2f} px/s  |   Threshold is: {MOVEMENT_THRESHOLD_PX_PER_SEC} width is: {width}"
-                                )
+                                # print(
+                                #     f"      [SPEED CALC] Pedestrian Speed: {speed_px_per_sec:.2f} px/s  |   Threshold is: {MOVEMENT_THRESHOLD_PX_PER_SEC} width is: {width}"
+                                # )
                                 if speed_px_per_sec > MOVEMENT_THRESHOLD_PX_PER_SEC:
                                     is_moving_ped = True
-                    
+
                         # ==========================================================
 
                     if position:
@@ -152,17 +168,34 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         cls == "Red"
                         and width > RED_LIGHT_MIN_WIDTH
                         and not is_stopped_light
+                        and not is_stopped_pedestrian
+                        and not is_stopped_for_sign
+                        and not is_stopped_yield
                     ):
                         command_queue.put("STOP")
                         print(
                             "[Controller] STOPPING: Red light detected by perception."
                         )
                         is_stopped_light = True
-
+                    # elif (
+                    #     cls == "Yellow"
+                    #     and width > RED_LIGHT_MIN_WIDTH
+                    #     and not is_stopped_light
+                    #     and not is_stopped_for_sign
+                    #     and not is_stopped_yield
+                    #     and not is_stopped_pedestrian
+                    # ):
+                    #     command_queue.put("STOP")
+                    #     print(
+                    #         "[Controller] STOPPING: Red light detected by perception."
+                    #     )
+                    #     is_stopped_light = True
                     # MODIFIED: Go condition now only depends on perception.
                     elif (
                         cls == "Green"
                         and is_stopped_light
+                        and not is_stopped_for_sign
+                        and not is_stopped_yield
                         and not is_stopped_pedestrian
                     ):
                         command_queue.put("GO")
@@ -171,10 +204,41 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         )
                         is_stopped_light = False
 
+                    # --- START: NEW LOGIC FOR STOP SIGN DETECTION ---
+                    # This logic triggers the stop for a sign.
+                    elif (
+                        cls == "STOP"  # Assuming perception outputs 'stop_sign'
+                        and not is_stopped_for_sign
+                        and not is_stopped_light
+                        and not is_stopped_pedestrian
+                        and not is_stopped_yield
+                        and width > STOP_SIGN_MIN_WIDTH
+                        and time.time() - stop_sign_start_time > 10
+                    ):
+                        command_queue.put("STOP")
+                        # print("Width of stop sign: ",width)
+                        is_stopped_for_sign = True
+                        stop_sign_start_time = time.time()  # Start the 5-second timer
+                    # --- END: NEW LOGIC FOR STOP SIGN DETECTION ---
+                    elif (
+                        cls == "yield"
+                        and not is_stopped_yield
+                        and not is_stopped_for_sign
+                        and not is_stopped_light
+                        and not is_stopped_pedestrian
+                        and width > 55
+                        and time.time() - yield_sign_start_time > 6
+                    ):
+                        command_queue.put("STOP")
+                        print("Yield stopped width: ",width)
+                        is_stopped_yield = True
+                        yield_sign_start_time = time.time()
                     elif (
                         cls == "pedestrian"
                         and not is_stopped_light
                         and not is_moving_ped
+                        and not is_stopped_for_sign
+                        and not is_stopped_yield
                         and is_stopped_pedestrian
                     ):
                         command_queue.put("GO")
@@ -189,6 +253,8 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         and not is_stopped_light
                         and is_moving_ped
                         and not is_stopped_pedestrian
+                        and not is_stopped_yield
+                        and not is_stopped_for_sign
                         and width > PEDESTRIAN_MIN_WIDTH_FOR_STOP
                     ):
                         command_queue.put("STOP")
@@ -205,6 +271,8 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
             if (
                 is_stopped_pedestrian
                 and not is_stopped_light
+                and not is_stopped_for_sign
+                and not is_stopped_yield
                 and (
                     time.time() - last_pedestrian_seen_time > PEDESTRIAN_CLEAR_TIMEOUT_S
                 )
@@ -214,6 +282,33 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                     f"[Controller] RESUMING: Pedestrian not detected for > {PEDESTRIAN_CLEAR_TIMEOUT_S} second(s)."
                 )
                 is_stopped_pedestrian = False
+
+            # --- START: NEW LOGIC FOR TIMED RESUME FROM STOP SIGN ---
+            # This check runs every cycle. If the car is stopped for a sign and
+            # 5 seconds have passed, it will resume, provided no other hazards exist.
+            if (
+                is_stopped_for_sign
+                and (time.time() - stop_sign_start_time > STOP_SIGN_WAIT_TIME_S)
+                and not is_stopped_light
+                and not is_stopped_pedestrian
+                and not is_stopped_yield
+            ):
+                command_queue.put("GO")
+                print(
+                    f"[Controller] RESUMING: Stopped at sign for {STOP_SIGN_WAIT_TIME_S} seconds."
+                )
+                is_stopped_for_sign = False
+            # --- END: NEW LOGIC FOR TIMED RESUME FROM STOP SIGN ---
+            if (
+                is_stopped_yield
+                and (time.time() - yield_sign_start_time > 3)
+                and not is_stopped_for_sign
+                and not is_stopped_light
+                and not is_stopped_pedestrian
+            ):
+                command_queue.put("GO")
+                print(f"[Controller] RESUMING: Stopped at Yield for 3 seconds.")
+                is_stopped_yield = False
 
             time.sleep(0.05)
 

@@ -31,12 +31,12 @@ from qvl.real_time import QLabsRealTime
 tf = 6000
 startDelay = 1
 controllerUpdateRate = 100
-v_ref = 0.25
+v_ref = 0.5
 K_p = 0.1
 K_i = 1
 enableSteeringControl = True
 K_stanley = 1
-nodeSequence = [10, 2, 4, 14, 20, 22, 10]
+nodeSequence = [10, 2, 4, 6, 13, 19, 17, 20, 22, 10]
 # endregion
 
 # region : Initial Setup (remains mostly the same)
@@ -220,8 +220,12 @@ def controlLoop(command_queue, shared_pose):
                 command = command_queue.get()
                 if command == "STOP":
                     effective_v_ref = 0.0
+                elif command.startswith("GO") and command != "GO":
+                    value_str = command[3:]
+                    # Convert the extracted string to a float
+                    effective_v_ref = float(value_str)  # Restore original speed
                 elif command == "GO":
-                    effective_v_ref = v_ref  # Restore original speed
+                    effective_v_ref = v_ref
             # region : Update controllers and write to car
             if t < startDelay:
                 u = 0
