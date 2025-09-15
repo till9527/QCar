@@ -105,7 +105,7 @@ if __name__ == "__main__":
     print("Connection successful.")
     hSystem = QLabsSystem(qlabs)
     hEnvironmentOutdoors2 = QLabsEnvironmentOutdoors(qlabs)
-    hEnvironmentOutdoors2.set_weather_preset(hEnvironmentOutdoors2.SNOW)
+    hEnvironmentOutdoors2.set_weather_preset(hEnvironmentOutdoors2.THUNDERSTORM)
     # == 1. SETUP PHASE: Spawn all actors in the simulation ==
     print("Spawning all actors...")
 
@@ -116,7 +116,7 @@ if __name__ == "__main__":
         location=CROSSWALK_START,
         rotation=PEDESTRIAN_ROTATION,
         scale=[1, 1, 1],
-        configuration=6,
+        configuration=11,
         waitForConfirmation=True,
     )
     crosswalk = QLabsCrosswalk(qlabs)
