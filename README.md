@@ -8,14 +8,14 @@ The controller code is not perfect. For the moment, it is programmed to stop at 
 
 Additionally, for the controller to properly work each of your roboflow classes must be labeled exactly as such (case sensitive):
 
-"Green"
+"green_light"
 
 "pedestrian"
 
 "Qcar"
 
-"Red"
+"red_light"
 
-"STOP"
+"stop_sign"
 
-"yield"
+"yield_sign"
