@@ -23,7 +23,7 @@ def run_perception(perception_queue, actor_id):
         qlabs = QuanserInteractiveLabs()
         qlabs.open("localhost")
         print(f"[Perception-{actor_id}] ✅ Connection successful!")
-
+        print("Is Cuda available?",torch.cuda.is_available())
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model = YOLO(MODEL_PATH).to(device)
         print(f"[Perception-{actor_id}] ✅ Model loaded on '{device}'!")
@@ -38,7 +38,7 @@ def run_perception(perception_queue, actor_id):
             ok, image = car.get_image(CAMERA_TO_USE)
             if ok:
                 # Run inference
-                results = model(image, verbose=False,conf=0.8)[0]
+                results = model(image, verbose=False)[0]
 
                 # --- NEW: Process and send detection data ---
                 detections = []
