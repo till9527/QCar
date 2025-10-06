@@ -5,7 +5,8 @@ import math
 import numpy as np
 
 # Threshold
-red_light_LIGHT_MIN_WIDTH = 38
+RED_LIGHT_MIN_WIDTH = 30
+RED_LIGHT_MIN_HEIGHT = 30
 MOVEMENT_THRESHOLD_PX_PER_SEC = 25
 # --- START: NEW CONSTANTS FOR STOP SIGN ---
 STOP_SIGN_MIN_WIDTH = 50  # TUNE: Minimum width in pixels to consider a stop sign valid.
@@ -29,7 +30,7 @@ CAMERA_CENTER_X = 320
 CENTER_TOLERANCE = 150  # How far from the center an object can be (in pixels)
 
 # TUNE this: How close a pedestrian must be before we stop.
-PEDESTRIAN_MIN_WIDTH_FOR_STOP = 110
+PEDESTRIAN_MIN_WIDTH_FOR_STOP = 90
 QCAR_MIN_WIDTH_FOR_STOP = 120
 SAFE_FOLLOWING_DISTANCE_WIDTH = 80
 
@@ -168,6 +169,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                 if any_detected_objects(results):
                     cls = get_cls(results)
                     width = get_width(results)
+                    height = get_height(results)
                     position = get_position(results)
                     is_moving_ped = False
 
@@ -216,7 +218,8 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                     # MODIFIED: Stop condition now only depends on perception.
                     if (
                         cls == "red_light"
-                        and width > red_light_LIGHT_MIN_WIDTH
+                        and width > RED_LIGHT_MIN_WIDTH
+                        and height>RED_LIGHT_MIN_HEIGHT
                         and not is_stopped_light
                         and not is_stopped_pedestrian
                         and not is_stopped_for_sign
