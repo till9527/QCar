@@ -105,7 +105,7 @@ if __name__ == "__main__":
     print("Connection successful.")
     hSystem = QLabsSystem(qlabs)
     hEnvironmentOutdoors2 = QLabsEnvironmentOutdoors(qlabs)
-    hEnvironmentOutdoors2.set_weather_preset(hEnvironmentOutdoors2.CLEAR_SKIES)
+    hEnvironmentOutdoors2.set_weather_preset(hEnvironmentOutdoors2.THUNDERSTORM)
     # == 1. SETUP PHASE: Spawn all actors in the simulation ==
     print("Spawning all actors...")
 

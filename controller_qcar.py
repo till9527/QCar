@@ -179,7 +179,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         last_pedestrian_seen_time = current_time
                     if cls == "stop_sign":
                         last_stop_seen_time = current_time
-                        #print("Stop sign seen with width: ", width)
+                        # print("Stop sign seen with width: ", width)
                     if cls == "yield_sign":
                         last_yield_sign_seen_time = current_time
                     if cls == "red_light":
@@ -219,7 +219,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                     if (
                         cls == "red_light"
                         and width > RED_LIGHT_MIN_WIDTH
-                        and height>RED_LIGHT_MIN_HEIGHT
+                        and height > RED_LIGHT_MIN_HEIGHT
                         and not is_stopped_light
                         and not is_stopped_pedestrian
                         and not is_stopped_for_sign
@@ -269,7 +269,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         and not is_stopped_for_sign
                         and not is_stopped_light
                         and not is_stopped_pedestrian
-                        and width > 55
+                        and width > 30
                         and time.time() - yield_sign_sign_start_time > 6
                     ):
                         command_queue.put("STOP")
@@ -370,7 +370,9 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                 and not is_stopped_pedestrian
             ):
                 command_queue.put("GO")
-                print(f"[Controller] RESUMING: Stopped at red_light for over 5 seconds.")
+                print(
+                    f"[Controller] RESUMING: Stopped at red_light for over 5 seconds."
+                )
                 is_stopped_light = False
             time.sleep(0.05)
 
