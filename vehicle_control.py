@@ -31,7 +31,7 @@ from qvl.real_time import QLabsRealTime
 tf = 6000
 startDelay = 1
 controllerUpdateRate = 100
-v_ref = 0.3
+v_ref = 0.6
 K_p = 0.1
 K_i = 1
 enableSteeringControl = True
@@ -210,8 +210,8 @@ def controlLoop(command_queue, shared_pose):
                     )
                 shared_pose["x"] = ekf.x_hat[0, 0]
                 shared_pose["y"] = ekf.x_hat[1, 0]
-                shared_pose['th'] = ekf.x_hat[2, 0] # Share heading (theta)
-                shared_pose['v'] = qcar.motorTach  # Share current velocity
+                shared_pose["th"] = ekf.x_hat[2, 0]  # Share heading (theta)
+                shared_pose["v"] = qcar.motorTach  # Share current velocity
                 x = ekf.x_hat[0, 0]
                 y = ekf.x_hat[1, 0]
                 th = ekf.x_hat[2, 0]

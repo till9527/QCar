@@ -142,6 +142,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
     yield_sign_sign_start_time = 0
     stop_sign_width_enough = False
     red_light_start_time = 0
+    is_stopped_qcar = False
     # --- END: NEW STATE VARIABLES FOR STOP SIGN ---
 
     ### MODIFICATION 1: Add a variable to track the last time a pedestrian was seen.
@@ -152,7 +153,8 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
     last_red_light_seen_time = 0
     # This constant defines the timeout you requested.
     PEDESTRIAN_CLEAR_TIMEOUT_S = 1.5
-
+    width = 0
+    height = 0
     try:
         while True:
             # We process the queue if there's data, otherwise we can still check for timeouts.
@@ -247,6 +249,19 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
 
                     # --- START: NEW LOGIC FOR STOP SIGN DETECTION ---
                     # This logic triggers the stop for a sign.
+                    # elif cls == "Qcar" and width > 225 and height > 175:
+                    #     command_queue.put("STOP")
+                    #     print("[Controller] STOPPING: too close to Qcar.")
+                    #     is_stopped_qcar = True
+
+                    # elif (
+                    #     cls == "Qcar"
+                    #     and (width <= 225 or height <= 175)
+                    #     and is_stopped_qcar
+                    # ):
+                    #     command_queue.put("GO")
+                    #     print("[Controller] Resuming: far enough away from Qcar.")
+                    #     is_stopped_qcar = False
 
                     elif (
                         cls == "stop_sign"  # Assuming perception outputs 'stop_sign'

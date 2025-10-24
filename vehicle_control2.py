@@ -36,7 +36,7 @@ K_i = 1
 enableSteeringControl = True
 K_stanley = 1
 # MODIFICATION: Use a different path for the second car.
-nodeSequence = [4, 14, 20, 22, 9, 0, 2, 4]
+nodeSequence = [4, 6, 13, 19, 17, 20, 22, 10, 2, 4]
 # endregion
 
 # region : Initial Setup (remains mostly the same)
@@ -210,8 +210,8 @@ def controlLoop(command_queue, shared_pose):
                     )
                 shared_pose["x"] = ekf.x_hat[0, 0]
                 shared_pose["y"] = ekf.x_hat[1, 0]
-                shared_pose['th'] = ekf.x_hat[2, 0] # Share heading (theta)
-                shared_pose['v'] = qcar.motorTach  # Share current velocity
+                shared_pose["th"] = ekf.x_hat[2, 0]  # Share heading (theta)
+                shared_pose["v"] = qcar.motorTach  # Share current velocity
                 x = ekf.x_hat[0, 0]
                 y = ekf.x_hat[1, 0]
                 th = ekf.x_hat[2, 0]
