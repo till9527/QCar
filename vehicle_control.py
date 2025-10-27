@@ -31,7 +31,7 @@ from qvl.real_time import QLabsRealTime
 tf = 6000
 startDelay = 1
 controllerUpdateRate = 100
-v_ref = 0.6
+v_ref = 0.4
 K_p = 0.1
 K_i = 1
 enableSteeringControl = True

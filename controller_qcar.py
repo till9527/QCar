@@ -143,6 +143,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
     stop_sign_width_enough = False
     red_light_start_time = 0
     is_stopped_qcar = False
+    last_stop_qcar = 0
     # --- END: NEW STATE VARIABLES FOR STOP SIGN ---
 
     ### MODIFICATION 1: Add a variable to track the last time a pedestrian was seen.
@@ -176,7 +177,9 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                     is_moving_ped = False
 
                     ### MODIFICATION 2: If we see a pedestrian, update the timestamp.
-
+                    if cls == "Qcar":
+                        print("Width: ", width)
+                        print("Height: ", height)
                     if cls == "pedestrian":
                         last_pedestrian_seen_time = current_time
                     if cls == "stop_sign":
@@ -249,19 +252,33 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
 
                     # --- START: NEW LOGIC FOR STOP SIGN DETECTION ---
                     # This logic triggers the stop for a sign.
-                    # elif cls == "Qcar" and width > 225 and height > 175:
-                    #     command_queue.put("STOP")
-                    #     print("[Controller] STOPPING: too close to Qcar.")
-                    #     is_stopped_qcar = True
+                    elif (
+                        cls == "Qcar"
+                        and height > 150
+                        and not is_stopped_qcar
+                        and not is_stopped_for_sign
+                        and not is_stopped_light
+                        and not is_stopped_pedestrian
+                        and not is_stopped_yield_sign
+                    ):
+                        command_queue.put("STOP")
+                        print("[Controller] STOPPING: too close to Qcar.")
+                        is_stopped_qcar = True
+                        last_stop_qcar = time.time()
 
-                    # elif (
-                    #     cls == "Qcar"
-                    #     and (width <= 225 or height <= 175)
-                    #     and is_stopped_qcar
-                    # ):
-                    #     command_queue.put("GO")
-                    #     print("[Controller] Resuming: far enough away from Qcar.")
-                    #     is_stopped_qcar = False
+                    elif (
+                        cls == "Qcar"
+                        and is_stopped_qcar
+                        and not is_stopped_for_sign
+                        and not is_stopped_light
+                        and not is_stopped_pedestrian
+                        and not is_stopped_yield_sign
+                        and height <= 150
+                        and time.time() - last_stop_qcar > 1
+                    ):
+                        command_queue.put("GO")
+                        print("[Controller] Resuming: far enough away from Qcar.")
+                        is_stopped_qcar = False
 
                     elif (
                         cls == "stop_sign"  # Assuming perception outputs 'stop_sign'
@@ -269,6 +286,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         and not is_stopped_light
                         and not is_stopped_pedestrian
                         and not is_stopped_yield_sign
+                        and not is_stopped_qcar
                         and width > STOP_SIGN_MIN_WIDTH
                         and time.time() - stop_sign_start_time > 10
                     ):
@@ -284,6 +302,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         and not is_stopped_for_sign
                         and not is_stopped_light
                         and not is_stopped_pedestrian
+                        and not is_stopped_qcar
                         and width > 30
                         and time.time() - yield_sign_sign_start_time > 6
                     ):
@@ -297,6 +316,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         and not is_stopped_for_sign
                         and not is_stopped_yield_sign
                         and is_stopped_pedestrian
+                        and not is_stopped_qcar
                     ):
                         command_queue.put("GO")
                         print(
@@ -312,6 +332,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         and not is_stopped_pedestrian
                         and not is_stopped_yield_sign
                         and not is_stopped_for_sign
+                        and not is_stopped_qcar
                         and width > PEDESTRIAN_MIN_WIDTH_FOR_STOP
                     ):
                         command_queue.put("STOP")
@@ -343,6 +364,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                 and not is_stopped_light
                 and not is_stopped_for_sign
                 and not is_stopped_yield_sign
+                and not is_stopped_qcar
                 and (time.time() - last_pedestrian_seen_time > 1.5)
             ):
                 command_queue.put("GO")
@@ -350,7 +372,17 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                     f"[Controller] RESUMING: Pedestrian not detected for > {PEDESTRIAN_CLEAR_TIMEOUT_S} second(s)."
                 )
                 is_stopped_pedestrian = False
-
+            if (
+                is_stopped_qcar
+                and not is_stopped_pedestrian
+                and not is_stopped_light
+                and not is_stopped_for_sign
+                and not is_stopped_yield_sign
+                and (time.time() - last_stop_qcar > 5)
+            ):
+                command_queue.put("GO")
+                print(f"[Controller] RESUMING: Passed 1 second(s).")
+                is_stopped_qcar = False
             # --- START: NEW LOGIC FOR TIMED RESUME FROM STOP SIGN ---
             # This check runs every cycle. If the car is stopped for a sign and
             # 5 seconds have passed, it will resume, provided no other hazards exist.
@@ -360,6 +392,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                 and not is_stopped_light
                 and not is_stopped_pedestrian
                 and not is_stopped_yield_sign
+                and not is_stopped_qcar
             ):
                 command_queue.put("GO")
                 print(
@@ -373,6 +406,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                 and not is_stopped_for_sign
                 and not is_stopped_light
                 and not is_stopped_pedestrian
+                and not is_stopped_qcar
             ):
                 command_queue.put("GO")
                 print(f"[Controller] RESUMING: Stopped at yield_sign for 3 seconds.")
@@ -383,6 +417,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                 and not is_stopped_for_sign
                 and not is_stopped_yield_sign
                 and not is_stopped_pedestrian
+                and not is_stopped_qcar
             ):
                 command_queue.put("GO")
                 print(
