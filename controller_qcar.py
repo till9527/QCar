@@ -31,6 +31,7 @@ CENTER_TOLERANCE = 150  # How far from the center an object can be (in pixels)
 
 # TUNE this: How close a pedestrian must be before we stop.
 PEDESTRIAN_MIN_WIDTH_FOR_STOP = 90
+PEDESTRIAN_MIN_HEIGHT_FOR_STOP = 200
 QCAR_MIN_WIDTH_FOR_STOP = 120
 SAFE_FOLLOWING_DISTANCE_WIDTH = 80
 
@@ -152,6 +153,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
     last_stop_seen_time = 0
     last_yield_sign_seen_time = 0
     last_red_light_seen_time = 0
+    last_qcar_seen_time = 0
     # This constant defines the timeout you requested.
     PEDESTRIAN_CLEAR_TIMEOUT_S = 1.5
     width = 0
@@ -178,8 +180,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
 
                     ### MODIFICATION 2: If we see a pedestrian, update the timestamp.
                     if cls == "Qcar":
-                        print("Width: ", width)
-                        print("Height: ", height)
+                        last_qcar_seen_time = time.time()
                     if cls == "pedestrian":
                         last_pedestrian_seen_time = current_time
                     if cls == "stop_sign":
@@ -254,7 +255,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                     # This logic triggers the stop for a sign.
                     elif (
                         cls == "Qcar"
-                        and height > 150
+                        and height > 125
                         and not is_stopped_qcar
                         and not is_stopped_for_sign
                         and not is_stopped_light
@@ -273,8 +274,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         and not is_stopped_light
                         and not is_stopped_pedestrian
                         and not is_stopped_yield_sign
-                        and height <= 150
-                        and time.time() - last_stop_qcar > 1
+                        and height <= 125
                     ):
                         command_queue.put("GO")
                         print("[Controller] Resuming: far enough away from Qcar.")
@@ -334,6 +334,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                         and not is_stopped_for_sign
                         and not is_stopped_qcar
                         and width > PEDESTRIAN_MIN_WIDTH_FOR_STOP
+                        and height > PEDESTRIAN_MIN_HEIGHT_FOR_STOP
                     ):
                         command_queue.put("STOP")
                         print(
@@ -378,7 +379,7 @@ def main(perception_queue: multiprocessing.Queue, command_queue: multiprocessing
                 and not is_stopped_light
                 and not is_stopped_for_sign
                 and not is_stopped_yield_sign
-                and (time.time() - last_stop_qcar > 5)
+                and (time.time() - last_qcar_seen_time > 1)
             ):
                 command_queue.put("GO")
                 print(f"[Controller] RESUMING: Passed 1 second(s).")

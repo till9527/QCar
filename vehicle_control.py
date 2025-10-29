@@ -36,8 +36,78 @@ K_p = 0.1
 K_i = 1
 enableSteeringControl = True
 K_stanley = 1
-nodeSequence = [10, 2, 4, 6, 13, 19, 17, 20, 22, 10]
+nodeSequence = [10, 2, 4, 14, 20, 22, 10]
 # endregion
+traffic_lights = [
+    {
+        "id": 1,
+        "location": [23.667, 9.893, 0.005],
+        "rotation": [0, 0, 0],
+        "traffic_light_obj": None,
+    },
+    {
+        "id": 3,
+        "location": [-21.122, 9.341, 0.005],
+        "rotation": [0, 0, 180],
+        "traffic_light_obj": None,
+    },
+]
+geofencing_areas = []
+SCALING_FACTOR = 0.0912
+geofencing_threshold = 1.2
+has_stopped_at = {}  # Will be populated in __main__
+traffic_light_statuses = ["UNKNOWN"] * len(traffic_lights)
+light_threads = []
+
+
+def generate_geofencing_areas(traffic_lights, threshold):
+    return [
+        {
+            "name": f"Traffic Light {light['id']}",
+            "bounds": [
+                (
+                    light["location"][0] * SCALING_FACTOR - threshold,
+                    light["location"][1] * SCALING_FACTOR - threshold,
+                ),
+                (
+                    light["location"][0] * SCALING_FACTOR + threshold,
+                    light["location"][1] * SCALING_FACTOR + threshold,
+                ),
+            ],
+        }
+        for light in traffic_lights
+    ]
+
+
+def is_inside_geofence(position, geofence):
+    (x_min, y_min), (x_max, y_max) = geofence
+    return x_min <= position[0] <= x_max and y_min <= position[1] <= y_max
+
+
+def get_traffic_lights_status():
+    global traffic_lights
+    try:
+        status_map = {0: "NONE", 1: "RED", 2: "YELLOW", 3: "GREEN"}
+        statuses = []
+        for light in traffic_lights:
+            status, color_code = light["traffic_light_obj"].get_color()
+            status_str = status_map.get(color_code, "UNKNOWN")
+            statuses.append(status_str)
+            print(
+                f"Traffic Light {light['id']} Status: {status_str}"
+            )  # Print added back
+        return statuses
+    except Exception as e:
+        print(f"Error fetching traffic light statuses: {e}")
+        return ["UNKNOWN"] * len(traffic_lights)
+
+
+def traffic_light_status_thread():
+    global traffic_light_statuses
+    while not KILL_THREAD:
+        traffic_light_statuses = get_traffic_lights_status()
+        time.sleep(1)
+
 
 # region : Initial Setup (remains mostly the same)
 if enableSteeringControl:
@@ -192,6 +262,33 @@ def controlLoop(command_queue, shared_pose):
             qcar.read()
             if enableSteeringControl:
                 if gps.readGPS():
+                    position = (gps.position[0], gps.position[1])
+
+                    for i, area in enumerate(geofencing_areas):
+                        name = area["name"]
+                        inside = is_inside_geofence(position, area["bounds"])
+                        # Read the global status updated by the status thread
+                        traffic_light_status = traffic_light_statuses[i]
+
+                        if inside:
+                            if (
+                                traffic_light_status == "RED"
+                                and not has_stopped_at[name]
+                            ):
+                                command_queue.put("STOP")
+                                has_stopped_at[name] = True
+                                print(f"Stopping at {name} due to RED light!")
+                            elif (
+                                traffic_light_status == "GREEN" and has_stopped_at[name]
+                            ):
+                                command_queue.put("GO")  # GO (resume cruise speed)
+                                has_stopped_at[name] = False
+                                print(
+                                    f"Traffic light at {name} turned GREEN. Resuming movement."
+                                )
+                        if not inside and has_stopped_at[name]:
+                            # Reset stop flag once we leave the area
+                            has_stopped_at[name] = False
                     y_gps = np.array(
                         [gps.position[0], gps.position[1], gps.orientation[2]]
                     )
