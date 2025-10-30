@@ -365,7 +365,7 @@ if __name__ == "__main__":
         initialPose1 = roadmap.get_node_pose(nodeSequence1[0]).squeeze()
 
         # Path for Car 2 (Inner Loop)
-        nodeSequence2 = [1, 3, 5, 7, 12, 18, 16, 21, 23, 1]
+        nodeSequence2 = [1, 7, 5, 3, 1]
         waypointSequence2 = roadmap.generate_path(nodeSequence2)
         initialPose2 = roadmap.get_node_pose(nodeSequence2[0]).squeeze()
     else:
