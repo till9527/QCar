@@ -1,4 +1,4 @@
-# v2x_module.py (Final Version)
+# v2x_module.py (Final Version - Modified for 2 Cars)
 
 import os
 
@@ -8,12 +8,6 @@ import numpy as np
 from threading import Thread
 import time
 import sys
-
-# --- Removed Perception/Controller Imports ---
-# import multiprocessing as mp
-# from perception_module import run_perception
-# import perception_module
-# import controller_qcar as controller  # The brain
 
 # --- Imports for Spawning (from initCars.py) ---
 from qvl.multi_agent import MultiAgent, readRobots
@@ -33,13 +27,16 @@ global KILL_THREAD
 KILL_THREAD = False
 global qlabs
 qlabs = None
+# This will be populated in __main__ to hold stop flags for EACH car
+# Format: { "QC2_0": {"Traffic Light 1": False}, "QC2_1": {"Traffic Light 1": False} }
+global g_has_stopped_at_by_car
+g_has_stopped_at_by_car = {}
 
 
 # Used to enable safe keyboard triggered shutdown
 def sig_handler(*args):
     global KILL_THREAD
     KILL_THREAD = True
-    # perception_module.KILL_THREAD = True # <-- Removed
 
 
 signal.signal(signal.SIGINT, sig_handler)
@@ -58,25 +55,12 @@ K_i = 1
 # ===== Steering Controller Parameters
 enableSteeringControl = True
 K_stanley = 1.0
-nodeSequence = [10, 2, 4, 6, 13, 19, 17, 20, 22, 10]
 
-# region : Initial setup
-if enableSteeringControl:
-    roadmap = SDCSRoadMap(leftHandTraffic=False)
-    waypointSequence = roadmap.generate_path(nodeSequence)
-    initialPose = roadmap.get_node_pose(nodeSequence[0]).squeeze()
-else:
-    initialPose = [0, 0, 0]
+# --- Path and Pose data moved to __main__ ---
+# --- so we can define one for each car. ---
 
-if not IS_PHYSICAL_QCAR:
-    calibrate = False
-else:
-    calibrate = "y" in input("do you want to recalibrate?(y/n)")
 
-calibrationPose = [0, 2, -np.pi / 2]
-# endregion
-
-# region : V2X Setup
+# region : V2X Setup (No changes here)
 # Traffic Light Data
 traffic_lights = [
     {
@@ -97,7 +81,7 @@ traffic_lights = [
 geofencing_areas = []
 SCALING_FACTOR = 0.0912
 geofencing_threshold = 1.2
-has_stopped_at = {}  # Will be populated in __main__
+# has_stopped_at = {} # <-- REPLACED with g_has_stopped_at_by_car
 traffic_light_statuses = ["UNKNOWN"] * len(traffic_lights)
 light_threads = []
 
@@ -155,9 +139,8 @@ def get_traffic_lights_status():
             status, color_code = light["traffic_light_obj"].get_color()
             status_str = status_map.get(color_code, "UNKNOWN")
             statuses.append(status_str)
-            print(
-                f"Traffic Light {light['id']} Status: {status_str}"
-            )  # Print added back
+            # Print removed to avoid clutter with two cars
+            # print(f"Traffic Light {light['id']} Status: {status_str}")
         return statuses
     except Exception as e:
         print(f"Error fetching traffic light statuses: {e}")
@@ -232,35 +215,46 @@ class SteeringController:
 # endregion
 
 
-# region : MODIFIED controlLoop (Geofencing logic added back)
-# Removed command_queue and shared_pose from arguments
-def controlLoop(car_config):
+# region : MODIFIED controlLoop (Takes car-specific path and state)
+def controlLoop(
+    car_config,
+    car_id,
+    car_initial_pose,
+    car_waypoint_sequence,
+    car_calibration_pose,
+    calibrate_car,
+):
     # region controlLoop setup
-    global KILL_THREAD, v_ref, traffic_light_statuses, geofencing_areas, has_stopped_at
+    # Make sure to access the *global* variables
+    global KILL_THREAD, v_ref, traffic_light_statuses, geofencing_areas, g_has_stopped_at_by_car
     u = 0
     delta = 0
 
-    # This is the *local* speed target for the controller,
-    # which will be modified by the geofencing logic.
-    # It starts at the global cruise speed (v_ref).
+    # Get this car's specific dictionary for stop flags
+    my_stop_flags = g_has_stopped_at_by_car[car_id]
+
     current_v_ref = v_ref
     # endregion
 
     # region Controller initialization
     speedController = SpeedController(kp=K_p, ki=K_i)
     if enableSteeringControl:
-        steeringController = SteeringController(waypoints=waypointSequence, k=K_stanley)
+        # Use the car-specific waypoint sequence
+        steeringController = SteeringController(
+            waypoints=car_waypoint_sequence, k=K_stanley
+        )
     # endregion
 
     # region QCar interface setup
     qcar = QCar(
         readMode=1, frequency=controllerUpdateRate, hilPort=car_config["hilPort"]
     )
-    if enableSteeringControl or calibrate:
-        ekf = QCarEKF(x_0=initialPose)
+    if enableSteeringControl or calibrate_car:
+        # Use the car-specific initial pose for the EKF
+        ekf = QCarEKF(x_0=car_initial_pose)
         gps = QCarGPS(
-            initialPose=calibrationPose,
-            calibrate=calibrate,
+            initialPose=car_calibration_pose,  # Use shared calibration pose
+            calibrate=calibrate_car,
             gpsPort=car_config["gpsPort"],
             lidarIdealPort=car_config["lidarIdealPort"],
         )
@@ -283,36 +277,35 @@ def controlLoop(car_config):
             if enableSteeringControl:
                 if gps.readGPS():
 
-                    # --- GEOFENCING LOGIC (from V2X_simulation.py) ---
-                    # Get current position
+                    # --- GEOFENCING LOGIC (Modified) ---
                     position = (gps.position[0], gps.position[1])
 
                     for i, area in enumerate(geofencing_areas):
                         name = area["name"]
                         inside = is_inside_geofence(position, area["bounds"])
-                        # Read the global status updated by the status thread
                         traffic_light_status = traffic_light_statuses[i]
 
                         if inside:
+                            # Use this car's specific stop flag
                             if (
                                 traffic_light_status == "RED"
-                                and not has_stopped_at[name]
+                                and not my_stop_flags[name]
                             ):
                                 current_v_ref = 0.0  # STOP
-                                has_stopped_at[name] = True
-                                print(f"Stopping at {name} due to RED light!")
-                            elif (
-                                traffic_light_status == "GREEN" and has_stopped_at[name]
-                            ):
-                                current_v_ref = v_ref  # GO (resume cruise speed)
-                                has_stopped_at[name] = False
+                                my_stop_flags[name] = True
                                 print(
-                                    f"Traffic light at {name} turned GREEN. Resuming movement."
+                                    f"[{car_id}] Stopping at {name} due to RED light!"
                                 )
-                        if not inside and has_stopped_at[name]:
-                            # Reset stop flag once we leave the area
-                            has_stopped_at[name] = False
-
+                            elif (
+                                traffic_light_status == "GREEN" and my_stop_flags[name]
+                            ):
+                                current_v_ref = v_ref  # GO
+                                my_stop_flags[name] = False
+                                print(
+                                    f"[{car_id}] Traffic light at {name} turned GREEN. Resuming."
+                                )
+                        if not inside and my_stop_flags[name]:
+                            my_stop_flags[name] = False
                     # --- END GEOFENCING LOGIC ---
 
                     y_gps = np.array(
@@ -339,14 +332,11 @@ def controlLoop(car_config):
             v = qcar.motorTach
             # endregion
 
-            # --- Removed command_queue check ---
-
             # region : Update controllers and write to car
             if t < startDelay:
                 u = 0
                 delta = 0
             else:
-                # Use the local current_v_ref, which is controlled by the geofencing logic
                 u = speedController.update(v, current_v_ref, dt)
                 if enableSteeringControl:
                     delta = steeringController.update(p, th, v)
@@ -362,14 +352,34 @@ def controlLoop(car_config):
 # endregion
 
 
-# region : SIMPLIFIED __main__ (Removed Perception/Controller)
+# region : HEAVILY MODIFIED __main__ (Spawns 2 cars)
 if __name__ == "__main__":
-    # --- Removed multiprocessing setup ---
-    # mp.set_start_method("spawn", force=True)
-    # perception_queue = mp.Queue(maxsize=1)
-    # command_queue = mp.Queue(maxsize=1)
-    # manager = mp.Manager()
-    # shared_pose = manager.dict(...)
+
+    # --- Setup that was previously global ---
+    if enableSteeringControl:
+        roadmap = SDCSRoadMap(leftHandTraffic=False)
+
+        # Path for Car 1 (Outer Loop)
+        nodeSequence1 = [10, 2, 4, 6, 13, 19, 17, 20, 22, 10]
+        waypointSequence1 = roadmap.generate_path(nodeSequence1)
+        initialPose1 = roadmap.get_node_pose(nodeSequence1[0]).squeeze()
+
+        # Path for Car 2 (Inner Loop)
+        nodeSequence2 = [1, 3, 5, 7, 12, 18, 16, 21, 23, 1]
+        waypointSequence2 = roadmap.generate_path(nodeSequence2)
+        initialPose2 = roadmap.get_node_pose(nodeSequence2[0]).squeeze()
+    else:
+        initialPose1 = [0, 0, 0]
+        initialPose2 = [2, 0, 0]  # Just give it a different start pos
+
+    if not IS_PHYSICAL_QCAR:
+        calibrate = False
+    else:
+        calibrate = "y" in input("do you want to recalibrate?(y/n)")
+
+    # This can be shared by both
+    calibrationPose = [0, 2, -np.pi / 2]
+    # --- End of setup ---
 
     # --- Main QLabs & Spawning Block ---
     try:
@@ -386,22 +396,32 @@ if __name__ == "__main__":
         qlabs.destroy_all_spawned_actors()
         print("✅ Environment is clean.")
 
-        # 3. Define and Spawn QCar
-        print("Spawning QCar...")
+        # 3. Define and Spawn 2 QCars
+        print("Spawning 2 QCars...")
         QCars_to_spawn = [
             {
                 "RobotType": "QCar2",
-                "Location": [initialPose[0], initialPose[1], 0.0],
-                "Rotation": [0, 0, initialPose[2]],
+                "Location": [initialPose1[0], initialPose1[1], 0.0],
+                "Rotation": [0, 0, initialPose1[2]],
                 "Radians": True,
-            }
+            },
+            {
+                "RobotType": "QCar2",
+                "Location": [initialPose2[0], initialPose2[1], 0.0],
+                "Rotation": [0, 0, initialPose2[2]],
+                "Radians": True,
+            },
         ]
         MultiAgent(QCars_to_spawn)
-        print("✅ QCar spawned and RobotAgents.json created.")
+        print("✅ 2 QCars spawned and RobotAgents.json created.")
 
-        # 4. Read the config file that was just created
+        # 4. Read the config file
         robotsDir = readRobots()
-        Car1 = robotsDir["QC2_0"]
+        # Get configs and IDs for both cars
+        Car1_ID = "QC2_0"
+        Car2_ID = "QC2_1"
+        Car1_Config = robotsDir[Car1_ID]
+        Car2_Config = robotsDir[Car2_ID]
 
         # 5. Spawn Traffic Lights
         print("Spawning traffic lights...")
@@ -417,11 +437,15 @@ if __name__ == "__main__":
         print("✅ Traffic Lights Spawned")
 
         # 6. Setup Geofencing
+
         geofencing_areas = generate_geofencing_areas(
             traffic_lights, geofencing_threshold
         )
-        has_stopped_at = {area["name"]: False for area in geofencing_areas}
-        print("✅ Geofencing Areas Defined")
+        # Create a sub-dictionary for each car
+        area_names = [area["name"] for area in geofencing_areas]
+        g_has_stopped_at_by_car[Car1_ID] = {name: False for name in area_names}
+        g_has_stopped_at_by_car[Car2_ID] = {name: False for name in area_names}
+        print("✅ Geofencing Areas Defined (for 2 cars)")
 
         # 7. Start traffic light sequence threads
         for i, light in enumerate(traffic_lights):
@@ -432,37 +456,60 @@ if __name__ == "__main__":
             t.start()
             light_threads.append(t)
 
-        # 8. Start V2X status thread
+        # 8. Start V2X status thread (only need one)
         statusThread = Thread(target=traffic_light_status_thread)
         statusThread.start()
 
         # 9. Start All Processes and Threads
-        print("Starting Control Loop...")
-        # --- Removed Perception and Controller processes ---
-        # perception_proc = Thread(...)
-        # controller_proc = mp.Process(...)
+        print("Starting Control Loops for 2 Cars...")
 
-        # MODIFIED: Pass 'Car1' config directly, no queues
-        control_thread = Thread(target=controlLoop, args=(Car1,))
-        control_thread.start()
+        # Create and start a thread for Car 1
+        control_thread_1 = Thread(
+            target=controlLoop,
+            args=(
+                Car1_Config,
+                Car1_ID,
+                initialPose1,
+                waypointSequence1,
+                calibrationPose,
+                calibrate,
+            ),
+        )
+
+        # Create and start a thread for Car 2
+        control_thread_2 = Thread(
+            target=controlLoop,
+            args=(
+                Car2_Config,
+                Car2_ID,
+                initialPose2,
+                waypointSequence2,
+                calibrationPose,
+                calibrate,  # Note: Both cars get the same calibration setting
+            ),
+        )
+
+        control_thread_1.start()
+        control_thread_2.start()
         print("✅ All systems running.")
 
-        # 10. Run main loop
+        # 10. Run main loop (wait for BOTH threads to finish)
         try:
-            while control_thread.is_alive() and (not KILL_THREAD):
+            while (control_thread_1.is_alive() or control_thread_2.is_alive()) and (
+                not KILL_THREAD
+            ):
                 time.sleep(0.1)
         except KeyboardInterrupt:
             print("Shutdown initiated by user.")
         finally:
             print("Shutdown initiated...")
             KILL_THREAD = True
-            # --- Simplified shutdown ---
-            # if controller_proc.is_alive():
-            #     controller_proc.terminate()
-            # perception_proc.join()
-            control_thread.join()
+
+            # Wait for both control threads to join
+            control_thread_1.join()
+            control_thread_2.join()
             statusThread.join()
-            # controller_proc.join()
+            print("✅ Control and status threads joined.")
 
     except Exception as e:
         print(f"An error occurred during setup or execution: {e}")
