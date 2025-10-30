@@ -6,6 +6,8 @@ Note:
 
 The controller code is not perfect. For the moment, it is programmed to stop at stop signs for 5 seconds regardless of circumstance, and stop at yield signs for 3 seconds regardless of circumstance. Additionally, we do not yet have any automated cruise control, so if one car crashes into another just restart the program.
 
+The v2x_helpers.py is a standalone script to run v2x on both QCars.
+
 Additionally, for the controller to properly work each of your roboflow classes must be labeled exactly as such (case sensitive):
 
 "green_light"
