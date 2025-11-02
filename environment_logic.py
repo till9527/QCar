@@ -17,7 +17,7 @@ from qvl.system import QLabsSystem
 
 # --- Configuration Constants ---
 TRAFFIC_LIGHTS_CONFIG = [
-    {"id": 1, "location": [23.667, 9.893, 0.005], "rotation": [0, 0, 0]},
+    {"id": 4, "location": [23.667, 9.893, 0.005], "rotation": [0, 0, 0]},
     {"id": 3, "location": [-21.122, 9.341, 0.005], "rotation": [0, 0, 180]},
 ]
 STOP_SIGNS_CONFIG = [
