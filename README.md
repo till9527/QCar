@@ -6,7 +6,7 @@ Note:
 
 The controller code is not perfect. For the moment, it is programmed to stop at stop signs for 5 seconds regardless of circumstance, and stop at yield signs for 3 seconds regardless of circumstance.
 
-The cruise control is a bit jerky because it is not yet adaptive.
+The adaptive cruise control is a bit jerky, this will be fixed in future updates.
 
 The v2x_helpers.py is a standalone script to run just v2x on both QCars. The main program ran from "run.bat" utilizes both perception and v2x.
 
