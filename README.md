@@ -6,6 +6,8 @@ The controller code is not perfect. For the moment, it is programmed to stop at 
 
 The adaptive cruise control is a bit jerky, this will be fixed in future updates.
 
+The Training_model.py file is for training a yolov8 model that you've downloaded. The paths won't work because they're local to my PC.
+
 The v2x_helpers.py is a standalone script to run just v2x on both QCars. The main program ran from "run.bat" utilizes both perception and v2x.
 
 Additionally, for the controller to properly work each of your roboflow classes must be labeled exactly as such (case sensitive):
