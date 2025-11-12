@@ -5,8 +5,15 @@ import math
 import numpy as np
 from multiprocessing.managers import DictProxy
 from threading import Thread
-from pal.products.qcar import IS_PHYSICAL_QCAR # Still useful to know
+from pal.products.qcar import IS_PHYSICAL_QCAR  # Still useful to know
 
+MAP_SCALER_X = 0.03935
+MAP_SCALER_Y = -0.03607  # Note: Y-axis is inverted
+MAP_OFFSET_X = 1.3607
+MAP_OFFSET_Y = 2.9348
+# --- END NEW ---
+
+geofencing_threshold = 1.2
 # --- REMOVED: QLabs Imports ---
 
 # --- Perception Thresholds ---
@@ -41,42 +48,181 @@ PEDESTRIAN_CLEAR_TIMEOUT_S = 1.5
 # (which should be in the order [ID 4, ID 3]) to the correct geofence area.
 traffic_lights = [
     {
-        "id": 4, # Corresponds to ID 4 from perception module
+        "id": 4,  # Corresponds to ID 4 from perception module
         "location": [23.667, 9.893, 0.005],
+        "rotation": [0, 0, 0],
     },
     {
-        "id": 3, # Corresponds to ID 3 from perception module
+        "id": 3,  # Corresponds to ID 3 from perception module
         "location": [-21.122, 9.341, 0.005],
+        "rotation": [0, 0, 180],
     },
 ]
 SCALING_FACTOR = 0.0912
-geofencing_threshold = 1.2
+geofencing_threshold = 0.5
 # --- REMOVED: qlabs = None ---
+MANUAL_GEOFENCE_BOUNDS = {
+    4: {  # Bounds for Light ID 4 (Positive X)
+        "x_min": 21.125,
+        "x_max": 25.0,
+        "y_min": -2.274,
+        "y_max": 2.158,
+    },
+    3: {  # Bounds for Light ID 3 (Negative X)
+        "x_min": -21.4,
+        "x_max": -17.5,
+        "y_min": 15.472,
+        "y_max": 20.436,
+    },
+}
+
 
 # --- V2X Helper Functions (Geofencing only) ---
-def generate_geofencing_areas(traffic_lights_list, threshold):
-    return [
-        {
-            "name": f"Traffic Light {light['id']}",
-            "bounds": [
-                (
-                    light["location"][0] * SCALING_FACTOR - threshold,
-                    light["location"][1] * SCALING_FACTOR - threshold,
-                ),
-                (
-                    light["location"][0] * SCALING_FACTOR + threshold,
-                    light["location"][1] * SCALING_FACTOR + threshold,
-                ),
-            ],
-        }
-        for light in traffic_lights_list
-    ]
+def generate_geofencing_areas(traffic_lights_list):
+    """
+    Generates geofencing areas in the car's EKF/Map coordinate system.
+    Applies the full affine transformation (scale + offset) for both X and Y.
+    """
+    generated_areas = []
+
+    # Local offsets for a 0-degree rotation
+    local_corner_1 = (1.0, -3.0)
+    local_corner_2 = (-3.25, -12.0)
+
+    for light in traffic_lights_list:
+
+        # 1. --- CONVERT LIGHT'S CENTER TO MAP COORDS ---
+        raw_world_x = light["location"][0]
+        raw_world_y = light["location"][1]
+
+        # --- THIS IS THE CRITICAL CHANGE ---
+        # Apply the new, separate transformations
+        map_center_x = (raw_world_x * MAP_SCALER_X) + MAP_OFFSET_X
+        map_center_y = (raw_world_y * MAP_SCALER_Y) + MAP_OFFSET_Y
+
+        # 2. --- APPLY ROTATION TO LOCAL OFFSETS ---
+        try:
+            yaw_deg = light["rotation"][2]
+        except (KeyError, IndexError):
+            yaw_deg = 0.0
+
+        yaw_rad = math.radians(yaw_deg)
+        cos_yaw = math.cos(yaw_rad)
+        sin_yaw = math.sin(yaw_rad)
+
+        # Rotate local_corner_1
+        rot_x1 = local_corner_1[0] * cos_yaw - local_corner_1[1] * sin_yaw
+        rot_y1 = local_corner_1[0] * sin_yaw + local_corner_1[1] * cos_yaw
+
+        # Rotate local_corner_2
+        rot_x2 = local_corner_2[0] * cos_yaw - local_corner_2[1] * sin_yaw
+        rot_y2 = local_corner_2[0] * sin_yaw + local_corner_2[1] * cos_yaw
+
+        # 3. --- CREATE FINAL AABB IN MAP COORDS ---
+        map_corner_1 = (map_center_x + rot_x1, map_center_y + rot_y1)
+        map_corner_2 = (map_center_x + rot_x2, map_center_y + rot_y2)
+
+        x_min = min(map_corner_1[0], map_corner_2[0])
+        x_max = max(map_corner_1[0], map_corner_2[0])
+        y_min = min(map_corner_1[1], map_corner_2[1])
+        y_max = max(map_corner_1[1], map_corner_2[1])
+
+        generated_areas.append(
+            {
+                "name": f"Traffic Light {light['id']}",
+                "bounds": [
+                    (x_min, y_min),
+                    (x_max, y_max),
+                ],
+            }
+        )
+    return generated_areas
+
+
+def generate_geofencing_areas_visualizer(traffic_lights_list):
+    """
+    Generates geofencing areas by applying rotation to the
+    hard-coded local bounds.
+
+    Assumes `light['rotation']` provides [roll, pitch, yaw].
+    Ignores threshold and SCALING_FACTOR.
+    """
+
+    generated_areas = []
+
+    # --- Define the "perfect" bounds as local offsets ---
+    # (From your example, assuming 0,0,0 rotation)
+    local_corner_1 = (1.0, -3.0)  # (local_x1, local_y1)
+    local_corner_2 = (-3.25, -12.0)  # (local_x2, local_y2)
+
+    for light in traffic_lights_list:
+        # Get the light's world position
+        center_x = light["location"][0]
+        center_y = light["location"][1]
+
+        # Get the light's Z-axis rotation (yaw) in degrees
+        try:
+            # Assumes rotation is [roll, pitch, yaw]
+            yaw_deg = light["rotation"][2]
+        except (KeyError, IndexError):
+            # Fallback for safety if 'rotation' isn't provided
+            yaw_deg = 0.0
+
+        # Convert to radians for trigonometric functions
+        yaw_rad = math.radians(yaw_deg)
+        cos_yaw = math.cos(yaw_rad)
+        sin_yaw = math.sin(yaw_rad)
+
+        # --- Rotate local_corner_1 ---
+        # x_rotated = x*cos(a) - y*sin(a)
+        # y_rotated = x*sin(a) + y*cos(a)
+        rot_x1 = local_corner_1[0] * cos_yaw - local_corner_1[1] * sin_yaw
+        rot_y1 = local_corner_1[0] * sin_yaw + local_corner_1[1] * cos_yaw
+
+        # Add rotated offset to center to get final world coordinate
+        world_corner_1 = (center_x + rot_x1, center_y + rot_y1)
+
+        # --- Rotate local_corner_2 ---
+        rot_x2 = local_corner_2[0] * cos_yaw - local_corner_2[1] * sin_yaw
+        rot_y2 = local_corner_2[0] * sin_yaw + local_corner_2[1] * cos_yaw
+
+        # Add rotated offset to center to get final world coordinate
+        world_corner_2 = (center_x + rot_x2, center_y + rot_y2)
+
+        # --- Create an Axis-Aligned Bounding Box (AABB) ---
+        # Your 'is_inside_geofence' function needs a simple min/max box.
+        # We find the min and max x/y values from our two rotated corners.
+        x_min = min(world_corner_1[0], world_corner_2[0])
+        x_max = max(world_corner_1[0], world_corner_2[0])
+        y_min = min(world_corner_1[1], world_corner_2[1])
+        y_max = max(world_corner_1[1], world_corner_2[1])
+
+        # Add the final area to the list
+        generated_areas.append(
+            {
+                "name": f"Traffic Light {light['id']}",
+                "bounds": [
+                    (x_min, y_min),  # (x_min, y_min)
+                    (x_max, y_max),  # (x_max, y_max)
+                ],
+            }
+        )
+
+    return generated_areas
+
 
 # --- REMOVED: get_traffic_lights_status() ---
 
+
 def is_inside_geofence(position, geofence):
     (x_min, y_min), (x_max, y_max) = geofence
-    return x_min <= position[0] <= x_max and y_min <= position[1] <= y_max
+    # print(x_min, y_min, x_max, y_max)
+    # print(position)
+    return (
+        x_min * SCALING_FACTOR <= position[0] <= x_max * SCALING_FACTOR
+        and y_min * SCALING_FACTOR <= position[1] <= y_max * SCALING_FACTOR
+    )
+
 
 # --- Helper functions ---
 def get_position(results):
@@ -120,11 +266,11 @@ def main(
     command_queue: multiprocessing.Queue,
     shared_pose: DictProxy,
 ):
-    
+
     # --- V2X State Variables (Local) ---
     is_stopped_v2x_light = False
     geofencing_areas = []
-    has_stopped_at = {} 
+    has_stopped_at = {}
 
     # --- Perception State Variables ---
     is_stopped_light = False  # For perception-based red light
@@ -133,6 +279,7 @@ def main(
     is_moving_ped = False
     is_stopped_yield_sign = False
     is_stopped_for_sign = False
+    is_stopped_qcar_red_light = False
     stop_sign_start_time = 0
     yield_sign_sign_start_time = 0
     red_light_start_time = 0
@@ -143,48 +290,48 @@ def main(
     last_yield_sign_seen_time = 0
     last_red_light_seen_time = 0
     last_qcar_seen_time = 0
+    last_light_seen_time = 0
 
     # --- Overall Command State ---
     last_command_was_stop = False
-    
+
     # --- NEW: Timer for printing V2X status ---
     last_v2x_print_time = 0.0
-    
+
     try:
         # --- Setup Geofencing (No QLabs needed) ---
         if not IS_PHYSICAL_QCAR:
-            geofencing_areas = generate_geofencing_areas(
-                traffic_lights, geofencing_threshold
-            )
+            geofencing_areas = generate_geofencing_areas_visualizer(traffic_lights)
+            print(geofencing_areas)
             has_stopped_at = {area["name"]: False for area in geofencing_areas}
             print("[Controller] ✅ Geofencing Initialized (local).")
-        
+
         # --- *** FIX 1: Initialize persistent variables *before* the loop *** ---
-        results = [] # Detections (cleared each loop)
-        traffic_light_statuses = [] # V2X Status (persistent)
-        
+        results = []  # Detections (cleared each loop)
+        traffic_light_statuses = []  # V2X Status (persistent)
+
         # --- Main Controller Loop ---
         while True:
             current_time = time.time()
 
             # --- 1. GET BUNDLED DATA from Perception Module ---
-            results = [] # <-- FIX 1: Clear *only* perception results
-            
+            results = []  # <-- FIX 1: Clear *only* perception results
+
             if not perception_queue.empty():
                 input_data = perception_queue.get()
                 results = input_data.get("detections", [])
                 # <-- FIX 1: *Only* update V2X status when new data arrives.
                 # It is no longer reset to [] every loop.
-                traffic_light_statuses = input_data.get("v2x_statuses", []) 
-            
+                traffic_light_statuses = input_data.get("v2x_statuses", [])
+
             # --- Print V2X Status periodically ---
             # if (current_time - last_v2x_print_time > 3.0) and traffic_light_statuses:
             #     print(f"[Controller] V2X Status: {traffic_light_statuses}")
             #     last_v2x_print_time = current_time
-            
+
             # --- 2. RUN V2X/GEOFENCING LOGIC ---
-            v2x_wts_to_stop = False # V2X "wants to stop"
-            
+            v2x_wts_to_stop = False  # V2X "wants to stop"
+
             if not IS_PHYSICAL_QCAR and geofencing_areas:
                 position = (shared_pose["x"], shared_pose["y"])
 
@@ -198,12 +345,13 @@ def main(
                         traffic_light_status = "UNKNOWN"
 
                     if inside:
+                        # print("Is inside geofence")
+                        last_light_seen_time = current_time
                         if traffic_light_status == "RED":
+                            last_red_light_seen_time = current_time
                             v2x_wts_to_stop = True
                             has_stopped_at[name] = True
-                        elif (
-                            traffic_light_status == "GREEN" and has_stopped_at[name]
-                        ):
+                        elif traffic_light_status == "GREEN" and has_stopped_at[name]:
                             has_stopped_at[name] = False
                     if not inside and has_stopped_at[name]:
                         has_stopped_at[name] = False
@@ -228,6 +376,8 @@ def main(
                 # Update timestamps
                 if cls == "Qcar":
                     last_qcar_seen_time = current_time
+                    # print("Qcar width is: ", width)
+                    # print("Qcar height is: ", height)
                 if cls == "pedestrian":
                     last_pedestrian_seen_time = current_time
                 if cls == "stop_sign":
@@ -236,7 +386,14 @@ def main(
                     last_yield_sign_seen_time = current_time
                 if cls == "red_light":
                     last_red_light_seen_time = current_time
+                    last_light_seen_time = current_time
+                if cls == "green_light":
+                    last_light_seen_time = current_time
+                if cls == "yellow_light":
+                    last_light_seen_time = current_time
 
+                # print("last light seen time was: ", last_light_seen_time)
+                # print("current time is: ", current_time)
                 if position and cls in tracked_objects:
                     last_pos = tracked_objects[cls]["position"]
                     last_time = tracked_objects[cls]["time"]
@@ -267,17 +424,44 @@ def main(
                 elif cls == "green_light":
                     is_stopped_light = False
 
-                elif cls == "Qcar" and height > 125: # Simplified QCar following
+                elif cls == "Qcar" and height > 125:  # Simplified QCar following
                     is_stopped_qcar = True
+                    is_stopped_qcar_red_light = False
                     last_stop_qcar = current_time
-                elif cls == "Qcar" and height <= 125:
+                elif (
+                    cls == "Qcar"
+                    and height > 70
+                    and width > 70
+                    and current_time - last_red_light_seen_time < 5
+                ):
+                    # print("in front of qcar")
+                    is_stopped_qcar = True
+                    is_stopped_qcar_red_light = True
+
+                elif (
+                    cls == "Qcar"
+                    and is_stopped_qcar
+                    and not is_stopped_qcar_red_light
+                    and height <= 125
+                ):
                     is_stopped_qcar = False
+                    is_stopped_qcar_red_light = False
+                elif (
+                    cls == "Qcar"
+                    and is_stopped_qcar
+                    and is_stopped_qcar_red_light
+                    and height <= 70
+                    and width <= 70
+                ):
+                    # print("No longer in front of qcar")
+                    is_stopped_qcar = False
+                    is_stopped_qcar_red_light = False
 
                 elif (
                     cls == "stop_sign"
                     and not is_stopped_for_sign  # Only trigger once
                     and width > STOP_SIGN_MIN_WIDTH
-                    and current_time - stop_sign_start_time > 10 # Cooldown
+                    and current_time - stop_sign_start_time > 10  # Cooldown
                 ):
                     is_stopped_for_sign = True
                     stop_sign_start_time = current_time
@@ -321,10 +505,10 @@ def main(
                 is_stopped_yield_sign = False
 
             if is_stopped_light and (current_time - last_red_light_seen_time > 3):
-                is_stopped_light = False 
+                is_stopped_light = False
 
             # --- 5. *** FIX 2: FINAL DECISION BLOCK (with V2X Priority) *** ---
-            
+
             should_stop = False
             stop_reasons = []
 
@@ -332,7 +516,7 @@ def main(
             if is_stopped_v2x_light:
                 should_stop = True
                 stop_reasons = ["V2X_Light"]
-            
+
             # Priority 2: Perception Rules
             # Only check these if V2X isn't already stopping us,
             # OR to gather *additional* reasons to stop.
@@ -347,7 +531,9 @@ def main(
                 # Check if any perception rule wants to stop
                 if any(all_perception_conditions.values()):
                     should_stop = True
-                    stop_reasons = [k for k, v in all_perception_conditions.items() if v]
+                    stop_reasons = [
+                        k for k, v in all_perception_conditions.items() if v
+                    ]
 
             # Now, send the command based on the final decision
             if should_stop and not last_command_was_stop:
@@ -361,7 +547,7 @@ def main(
                 print("[Controller] RESUMING: All stop conditions clear.")
 
             # --- 6. LOOP DELAY ---
-            time.sleep(0.05) # Poll V2X and perception at 20Hz
+            time.sleep(0.05)  # Poll V2X and perception at 20Hz
 
     except KeyboardInterrupt:
         print("[Controller] Shutdown requested.")

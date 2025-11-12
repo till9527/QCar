@@ -59,10 +59,12 @@ calibrationPose = [0, 2, -np.pi / 2]
 global KILL_THREAD
 KILL_THREAD = False
 
+
 def sig_handler(*args):
     global KILL_THREAD
     KILL_THREAD = True
     perception_module.KILL_THREAD = True
+
 
 signal.signal(signal.SIGINT, sig_handler)
 # endregion
@@ -83,6 +85,7 @@ class SpeedController:
         return np.clip(
             self.kp * e + self.ki * self.ei, -self.maxThrottle, self.maxThrottle
         )
+
 
 class SteeringController:
     # ... (no changes) ...
@@ -122,6 +125,8 @@ class SteeringController:
             -self.maxSteeringAngle,
             self.maxSteeringAngle,
         )
+
+
 # endregion
 
 
@@ -172,6 +177,8 @@ def controlLoop(command_queue, shared_pose):
                     y_gps = np.array(
                         [gps.position[0], gps.position[1], gps.orientation[2]]
                     )
+                    shared_pose["x"] = gps.position[0]
+                    shared_pose["y"] = gps.position[1]
                     ekf.update(
                         [qcar.motorTach, delta],
                         dt,
@@ -187,8 +194,8 @@ def controlLoop(command_queue, shared_pose):
                     )
 
                 # --- SHARE POSE ---
-                shared_pose["x"] = ekf.x_hat[0, 0]
-                shared_pose["y"] = ekf.x_hat[1, 0]
+                # shared_pose["x"] = ekf.x_hat[0, 0]
+                # shared_pose["y"] = ekf.x_hat[1, 0]
                 shared_pose["th"] = ekf.x_hat[2, 0]
                 shared_pose["v"] = qcar.motorTach
                 # --- END SHARE POSE ---
@@ -273,7 +280,7 @@ if __name__ == "__main__":
     finally:
         print("Initiating shutdown...")
         KILL_THREAD = True
-        
+
         if controller_proc.is_alive():
             controller_proc.terminate()
         perception_proc.join()

@@ -30,14 +30,14 @@ try:
             "RobotType": "QC2",
             "Location": [-12.82, -4.60, 0],
             "Rotation": [0, 0, -0.733],
-            'Radians': True
+            "Radians": True,
         },
         {
             "RobotType": "QCar2",
             "Location": [22.55, 0.81, 0],
             "Rotation": [0, 0, 1.57],
-            'Radians': True
-        }
+            "Radians": True,
+        },
     ]
 
     # 4. Use MultiAgent to spawn the cars AND create RobotAgents.json

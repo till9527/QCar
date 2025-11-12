@@ -22,6 +22,7 @@ TRAFFIC_LIGHTS_CONFIG = [
 # We will populate this list of handles
 traffic_light_handles = []
 
+
 # --- NEW: V2X Helper Function ---
 def get_traffic_lights_status():
     global traffic_light_handles
@@ -52,7 +53,7 @@ def run_perception(perception_queue, actor_id):
         qlabs = QuanserInteractiveLabs()
         qlabs.open("localhost")
         print(f"[Perception-{actor_id}] ✅ Connection successful!")
-        print("Is Cuda available?",torch.cuda.is_available())
+        print("Is Cuda available?", torch.cuda.is_available())
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model = YOLO(MODEL_PATH).to(device)
         print(f"[Perception-{actor_id}] ✅ Model loaded on '{device}'!")
@@ -70,7 +71,9 @@ def run_perception(perception_queue, actor_id):
                 # We don't spawn, just get a handle to the existing light
                 light.actorNumber = config["id"]
                 traffic_light_handles.append(light)
-            print(f"[Perception-{actor_id}] ✅ Attached to {len(traffic_light_handles)} traffic lights.")
+            print(
+                f"[Perception-{actor_id}] ✅ Attached to {len(traffic_light_handles)} traffic lights."
+            )
         # --- END NEW ---
 
         # Main Detection Loop
@@ -101,13 +104,10 @@ def run_perception(perception_queue, actor_id):
                 v2x_statuses = []
                 if not IS_PHYSICAL_QCAR:
                     v2x_statuses = get_traffic_lights_status()
-                
+
                 # --- NEW: Send bundled data dictionary ---
-                output_data = {
-                    "detections": detections,
-                    "v2x_statuses": v2x_statuses
-                }
-                
+                output_data = {"detections": detections, "v2x_statuses": v2x_statuses}
+
                 if not perception_queue.full():
                     perception_queue.put(output_data)
                 # --- END NEW ---
