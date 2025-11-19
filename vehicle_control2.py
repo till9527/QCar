@@ -9,6 +9,7 @@ import multiprocessing as mp
 from threading import Thread
 from qvl.qlabs import QuanserInteractiveLabs  # <-- ADD THIS
 from qvl.qcar2 import QLabsQCar2  # <-- ADD THIS
+import queue
 
 # --- REMOVED QLabs modules ---
 
@@ -262,11 +263,7 @@ if __name__ == "__main__":
         # MODIFIED: Args are now much simpler
         controller_proc = mp.Process(
             target=controller.main,
-            args=(
-                perception_queue,
-                command_queue,
-                shared_pose,
-            ),
+            args=(perception_queue, command_queue, shared_pose),
         )
         controller_proc.start()
 
@@ -287,6 +284,7 @@ if __name__ == "__main__":
             controller_proc.terminate()
         perception_proc.join()
         # --- REMOVED: statusThread.join() ---
+
         control_thread.join()
         controller_proc.join()
         print("✅ All threads and processes joined.")

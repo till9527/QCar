@@ -6,6 +6,7 @@ import numpy as np
 from multiprocessing.managers import DictProxy
 from threading import Thread
 from pal.products.qcar import IS_PHYSICAL_QCAR  # Still useful to know
+import queue
 
 MAP_SCALER_X = 0.03935
 MAP_SCALER_Y = -0.03607  # Note: Y-axis is inverted
@@ -152,8 +153,8 @@ def generate_geofencing_areas_visualizer(traffic_lights_list):
 
     # --- Define the "perfect" bounds as local offsets ---
     # (From your example, assuming 0,0,0 rotation)
-    local_corner_1 = (1.0, -3.0)  # (local_x1, local_y1)
-    local_corner_2 = (-3.25, -12.0)  # (local_x2, local_y2)
+    local_corner_1 = (1.0, -9.0)  # (local_x1, local_y1)
+    local_corner_2 = (-2.0, -13.0)  # (local_x2, local_y2)
 
     for light in traffic_lights_list:
         # Get the light's world position
@@ -282,6 +283,7 @@ def main(
     is_stopped_qcar_red_light = False
     stop_sign_start_time = 0
     yield_sign_sign_start_time = 0
+    last_green_light_seen_time = 0
     red_light_start_time = 0
     is_stopped_qcar = False
     last_stop_qcar = 0
@@ -344,14 +346,13 @@ def main(
                     except IndexError:
                         traffic_light_status = "UNKNOWN"
 
-                    if inside:
-                        # print("Is inside geofence")
                         last_light_seen_time = current_time
                         if traffic_light_status == "RED":
                             last_red_light_seen_time = current_time
                             v2x_wts_to_stop = True
                             has_stopped_at[name] = True
                         elif traffic_light_status == "GREEN" and has_stopped_at[name]:
+                            last_green_light_seen_time = current_time
                             has_stopped_at[name] = False
                     if not inside and has_stopped_at[name]:
                         has_stopped_at[name] = False
@@ -378,6 +379,10 @@ def main(
                     last_qcar_seen_time = current_time
                     # print("Qcar width is: ", width)
                     # print("Qcar height is: ", height)
+                    # print(
+                    #     "These many seconds have passed since we saw a red light: ",
+                    #     current_time - last_red_light_seen_time,
+                    # )
                 if cls == "pedestrian":
                     last_pedestrian_seen_time = current_time
                 if cls == "stop_sign":
@@ -389,6 +394,7 @@ def main(
                     last_light_seen_time = current_time
                 if cls == "green_light":
                     last_light_seen_time = current_time
+                    last_green_light_seen_time = current_time
                 if cls == "yellow_light":
                     last_light_seen_time = current_time
 
@@ -426,7 +432,6 @@ def main(
 
                 elif cls == "Qcar" and height > 125:  # Simplified QCar following
                     is_stopped_qcar = True
-                    is_stopped_qcar_red_light = False
                     last_stop_qcar = current_time
                 elif (
                     cls == "Qcar"
@@ -435,26 +440,19 @@ def main(
                     and current_time - last_red_light_seen_time < 5
                 ):
                     # print("in front of qcar")
-                    is_stopped_qcar = True
                     is_stopped_qcar_red_light = True
+
+                elif cls == "Qcar" and is_stopped_qcar and height <= 125:
+                    is_stopped_qcar = False
 
                 elif (
                     cls == "Qcar"
-                    and is_stopped_qcar
-                    and not is_stopped_qcar_red_light
-                    and height <= 125
-                ):
-                    is_stopped_qcar = False
-                    is_stopped_qcar_red_light = False
-                elif (
-                    cls == "Qcar"
-                    and is_stopped_qcar
                     and is_stopped_qcar_red_light
                     and height <= 70
                     and width <= 70
+                    and current_time - last_red_light_seen_time > 5
                 ):
                     # print("No longer in front of qcar")
-                    is_stopped_qcar = False
                     is_stopped_qcar_red_light = False
 
                 elif (
@@ -494,6 +492,11 @@ def main(
             if is_stopped_qcar and (current_time - last_qcar_seen_time > 1):
                 is_stopped_qcar = False
 
+            if is_stopped_qcar_red_light and (
+                current_time - last_green_light_seen_time < 1
+            ) or (current_time - last_qcar_seen_time > 1):
+                is_stopped_qcar_red_light = False
+
             if is_stopped_for_sign and (
                 current_time - stop_sign_start_time > STOP_SIGN_WAIT_TIME_S
             ):
@@ -527,6 +530,7 @@ def main(
                     "Stop_Sign": is_stopped_for_sign,
                     "Yield_Sign": is_stopped_yield_sign,
                     "QCar_Too_Close": is_stopped_qcar,
+                    "QCar_Too_Close_Light": is_stopped_qcar_red_light,
                 }
                 # Check if any perception rule wants to stop
                 if any(all_perception_conditions.values()):
