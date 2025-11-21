@@ -346,16 +346,18 @@ def main(
                     except IndexError:
                         traffic_light_status = "UNKNOWN"
 
+                    if inside:
+                        # print("Is inside geofence")
                         last_light_seen_time = current_time
                         if traffic_light_status == "RED":
                             last_red_light_seen_time = current_time
                             v2x_wts_to_stop = True
                             has_stopped_at[name] = True
                         elif traffic_light_status == "GREEN" and has_stopped_at[name]:
-                            last_green_light_seen_time = current_time
                             has_stopped_at[name] = False
                     if not inside and has_stopped_at[name]:
                         has_stopped_at[name] = False
+                        # v2x_wts_to_stop = False
 
             is_stopped_v2x_light = v2x_wts_to_stop
 
@@ -383,6 +385,10 @@ def main(
                     #     "These many seconds have passed since we saw a red light: ",
                     #     current_time - last_red_light_seen_time,
                     # )
+                if (cls == "red_light" or cls == "green_light") and (
+                    width > RED_LIGHT_MIN_WIDTH and height > RED_LIGHT_MIN_HEIGHT
+                ):
+                    last_light_seen_time = current_time
                 if cls == "pedestrian":
                     last_pedestrian_seen_time = current_time
                 if cls == "stop_sign":
@@ -391,10 +397,10 @@ def main(
                     last_yield_sign_seen_time = current_time
                 if cls == "red_light":
                     last_red_light_seen_time = current_time
-                    last_light_seen_time = current_time
                 if cls == "green_light":
-                    last_light_seen_time = current_time
+
                     last_green_light_seen_time = current_time
+
                 if cls == "yellow_light":
                     last_light_seen_time = current_time
 
@@ -424,25 +430,73 @@ def main(
                     cls == "red_light"
                     and width > RED_LIGHT_MIN_WIDTH
                     and height > RED_LIGHT_MIN_HEIGHT
+                    and not is_stopped_for_sign
+                    and not is_stopped_light
+                    and not is_stopped_qcar
+                    and not is_stopped_qcar_red_light
+                    and not is_stopped_yield_sign
+                    and not is_stopped_v2x_light
+                    and not is_stopped_pedestrian
                 ):
                     is_stopped_light = True
                     red_light_start_time = current_time
-                elif cls == "green_light":
+
+                elif (
+                    cls == "green_light"
+                    and width > RED_LIGHT_MIN_WIDTH
+                    and height > RED_LIGHT_MIN_HEIGHT
+                    and not is_stopped_for_sign
+                    and is_stopped_light
+                    and not is_stopped_v2x_light
+                    and not is_stopped_qcar
+                    and not is_stopped_qcar_red_light
+                    and not is_stopped_yield_sign
+                    and not is_stopped_pedestrian
+                ):
+
                     is_stopped_light = False
 
-                elif cls == "Qcar" and height > 125:  # Simplified QCar following
+                elif (
+                    cls == "Qcar"
+                    and height > 125
+                    and not is_stopped_for_sign
+                    and not is_stopped_light
+                    and not is_stopped_v2x_light
+                    and not is_stopped_qcar
+                    and not is_stopped_qcar_red_light
+                    and not is_stopped_yield_sign
+                    and not is_stopped_pedestrian
+                ):  # Simplified QCar following
                     is_stopped_qcar = True
                     last_stop_qcar = current_time
+
                 elif (
                     cls == "Qcar"
                     and height > 70
                     and width > 70
                     and current_time - last_red_light_seen_time < 5
+                    and not is_stopped_for_sign
+                    and not is_stopped_light
+                    and not is_stopped_v2x_light
+                    and not is_stopped_qcar
+                    and not is_stopped_qcar_red_light
+                    and not is_stopped_yield_sign
+                    and not is_stopped_pedestrian
                 ):
                     # print("in front of qcar")
                     is_stopped_qcar_red_light = True
 
-                elif cls == "Qcar" and is_stopped_qcar and height <= 125:
+                elif (
+                    cls == "Qcar"
+                    and is_stopped_qcar
+                    and height <= 125
+                    and not is_stopped_for_sign
+                    and not is_stopped_light
+                    and not is_stopped_v2x_light
+                    and not is_stopped_qcar_red_light
+                    and not is_stopped_yield_sign
+                    and not is_stopped_pedestrian
+                ):
                     is_stopped_qcar = False
 
                 elif (
@@ -451,6 +505,12 @@ def main(
                     and height <= 70
                     and width <= 70
                     and current_time - last_red_light_seen_time > 5
+                    and not is_stopped_for_sign
+                    and not is_stopped_light
+                    and not is_stopped_v2x_light
+                    and not is_stopped_qcar
+                    and not is_stopped_yield_sign
+                    and not is_stopped_pedestrian
                 ):
                     # print("No longer in front of qcar")
                     is_stopped_qcar_red_light = False
@@ -460,6 +520,12 @@ def main(
                     and not is_stopped_for_sign  # Only trigger once
                     and width > STOP_SIGN_MIN_WIDTH
                     and current_time - stop_sign_start_time > 10  # Cooldown
+                    and not is_stopped_light
+                    and not is_stopped_v2x_light
+                    and not is_stopped_qcar
+                    and not is_stopped_qcar_red_light
+                    and not is_stopped_yield_sign
+                    and not is_stopped_pedestrian
                 ):
                     is_stopped_for_sign = True
                     stop_sign_start_time = current_time
@@ -467,19 +533,42 @@ def main(
                 elif (
                     cls == "yield_sign"
                     and not is_stopped_yield_sign  # Only trigger once
+                    and not is_stopped_light
+                    and not is_stopped_v2x_light
+                    and not is_stopped_qcar
+                    and not is_stopped_qcar_red_light
+                    and not is_stopped_for_sign
+                    and not is_stopped_pedestrian
                     and width > 30
                     and current_time - yield_sign_sign_start_time > 6
                 ):
                     is_stopped_yield_sign = True
                     yield_sign_sign_start_time = current_time
 
-                elif cls == "pedestrian" and not is_moving_ped:
+                elif (
+                    cls == "pedestrian"
+                    and not is_moving_ped
+                    and not is_stopped_yield_sign  # Only trigger once
+                    and not is_stopped_light
+                    and not is_stopped_v2x_light
+                    and not is_stopped_qcar
+                    and not is_stopped_qcar_red_light
+                    and not is_stopped_for_sign
+                    and not is_stopped_pedestrian
+                ):
                     is_stopped_pedestrian = False
                 elif (
                     cls == "pedestrian"
                     and is_moving_ped
                     and width > PEDESTRIAN_MIN_WIDTH_FOR_STOP
                     and height > PEDESTRIAN_MIN_HEIGHT_FOR_STOP
+                    and not is_stopped_yield_sign  # Only trigger once
+                    and not is_stopped_light
+                    and not is_stopped_v2x_light
+                    and not is_stopped_qcar
+                    and not is_stopped_qcar_red_light
+                    and not is_stopped_for_sign
+                    and not is_stopped_pedestrian
                 ):
                     is_stopped_pedestrian = True
 
@@ -493,8 +582,12 @@ def main(
                 is_stopped_qcar = False
 
             if is_stopped_qcar_red_light and (
-                current_time - last_green_light_seen_time < 1
-            ) or (current_time - last_qcar_seen_time > 1):
+                (
+                    current_time - last_green_light_seen_time < 1
+                    and current_time - last_red_light_seen_time > 1
+                )
+                or (current_time - last_qcar_seen_time > 1)
+            ):
                 is_stopped_qcar_red_light = False
 
             if is_stopped_for_sign and (
@@ -506,52 +599,56 @@ def main(
                 current_time - yield_sign_sign_start_time > 3
             ):
                 is_stopped_yield_sign = False
-
-            if is_stopped_light and (current_time - last_red_light_seen_time > 3):
+            if is_stopped_light and (current_time - last_light_seen_time > 3):
                 is_stopped_light = False
 
             # --- 5. *** FIX 2: FINAL DECISION BLOCK (with V2X Priority) *** ---
 
             should_stop = False
-            stop_reasons = []
 
             # Priority 1: V2X Rules (as you requested)
-            if is_stopped_v2x_light:
-                should_stop = True
-                stop_reasons = ["V2X_Light"]
 
-            # Priority 2: Perception Rules
-            # Only check these if V2X isn't already stopping us,
-            # OR to gather *additional* reasons to stop.
+            all_perception_conditions = {
+                "Perception_Light": is_stopped_light,
+                "Pedestrian": is_stopped_pedestrian,
+                "Stop_Sign": is_stopped_for_sign,
+                "Yield_Sign": is_stopped_yield_sign,
+                "QCar_Too_Close": is_stopped_qcar,
+                "QCar_Too_Close_Light": is_stopped_qcar_red_light,
+                "V2X_Light": is_stopped_v2x_light,
+            }
+
+            # Calculate current reasons immediately
+            current_reasons = [k for k, v in all_perception_conditions.items() if v]
+
+            if current_reasons:
+                should_stop = True
+                # Update the persistent tracker while we are stopped
+                active_stop_reasons = current_reasons
             else:
-                all_perception_conditions = {
-                    "Perception_Light": is_stopped_light,
-                    "Pedestrian": is_stopped_pedestrian,
-                    "Stop_Sign": is_stopped_for_sign,
-                    "Yield_Sign": is_stopped_yield_sign,
-                    "QCar_Too_Close": is_stopped_qcar,
-                    "QCar_Too_Close_Light": is_stopped_qcar_red_light,
-                }
-                # Check if any perception rule wants to stop
-                if any(all_perception_conditions.values()):
-                    should_stop = True
-                    stop_reasons = [
-                        k for k, v in all_perception_conditions.items() if v
-                    ]
+                should_stop = False
 
             # Now, send the command based on the final decision
             if should_stop and not last_command_was_stop:
                 command_queue.put("STOP")
                 last_command_was_stop = True
-                print(f"[Controller] STOPPING: Reasons: {stop_reasons}")
+                print(f"[Controller] STOPPING: Reasons: {active_stop_reasons}")
 
             elif not should_stop and last_command_was_stop:
                 command_queue.put("GO")
                 last_command_was_stop = False
-                print("[Controller] RESUMING: All stop conditions clear.")
 
-            # --- 6. LOOP DELAY ---
-            time.sleep(0.05)  # Poll V2X and perception at 20Hz
+                # We use active_stop_reasons here, which holds the data from the last frame
+                # where we were still stopped.
+                print(
+                    f"[Controller] RESUMING: Condition(s) cleared: {active_stop_reasons}"
+                )
+
+                # Optional: clear the tracker after resuming
+                active_stop_reasons = []
+
+                # --- 6. LOOP DELAY ---
+                time.sleep(0.05)  # Poll V2X and perception at 20Hz
 
     except KeyboardInterrupt:
         print("[Controller] Shutdown requested.")
