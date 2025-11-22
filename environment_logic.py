@@ -121,6 +121,9 @@ def weather_sequence(environment_handle):
     Cycles through different weather presets at a given interval using system time.
     """
     WEATHER_PRESETS = [
+        ("Clear", QLabsEnvironmentOutdoors.CLEAR_SKIES),
+        ("Cloudy", QLabsEnvironmentOutdoors.CLOUDY),
+        ("Rain", QLabsEnvironmentOutdoors.RAIN),
         ("Snow", QLabsEnvironmentOutdoors.SNOW),
     ]
 
